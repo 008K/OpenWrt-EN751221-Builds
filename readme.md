@@ -7,9 +7,11 @@ OpenWRT for EN751221 devices including:
 * TP-Link Archer VR1200v (v2)
 * Nokia G-240G-E
 * Zyxel PMG5617GA
+* ChinaMobile GS3101
 
-**WARNING:** This OS is *minimal*, there is support for USB and
-Ethernet but not wifi yet. You can only communicate with it using
-UART.
+**NOTE:** This is a SNAPSHOT build of OpenWrt, not a release.
+Currently repositories are not setup so installing software doesn't
+work yet. Other than the ChinaMobile GS3101, none of the devices
+support persistent storage yet.
 
-LAST BUILD: JAN 17 2026
+LAST BUILD: MAY 29 2026

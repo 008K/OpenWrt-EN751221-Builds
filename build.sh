@@ -1,8 +1,9 @@
 #!/bin/sh
 
+rm -rf ./openwrt
 git clone https://github.com/cjdelisle/openwrt.git
 cd openwrt || exit 1
-git checkout 450638efc6fb0762e2cfd3243827e9b62fd03b3f
+git checkout 9748f7ba602bff19a6271eb803b104989805c714
 
 ./scripts/feeds update -a
 ./scripts/feeds install -a
@@ -11,8 +12,12 @@ echo '
 CONFIG_TARGET_econet=y
 CONFIG_TARGET_econet_en751221=y
 CONFIG_TARGET_MULTI_PROFILE=y
+CONFIG_TARGET_DEVICE_econet_en751221_DEVICE_chinamobile_gs3101=y
+CONFIG_TARGET_DEVICE_PACKAGES_econet_en751221_DEVICE_chinamobile_gs3101=""
 CONFIG_TARGET_DEVICE_econet_en751221_DEVICE_en751221_generic=y
 CONFIG_TARGET_DEVICE_PACKAGES_econet_en751221_DEVICE_en751221_generic=""
+CONFIG_TARGET_DEVICE_econet_en751221_DEVICE_huawei_hg2821t-u=y
+CONFIG_TARGET_DEVICE_PACKAGES_econet_en751221_DEVICE_huawei_hg2821t-u=""
 CONFIG_TARGET_DEVICE_econet_en751221_DEVICE_nokia_g240g-e=y
 CONFIG_TARGET_DEVICE_PACKAGES_econet_en751221_DEVICE_nokia_g240g-e=""
 CONFIG_TARGET_DEVICE_econet_en751221_DEVICE_smartfiber_xp8421-b=y
@@ -32,6 +37,7 @@ CONFIG_PACKAGE_kmod-crypto-sha256=y
 CONFIG_PACKAGE_kmod-econet-eth=y
 CONFIG_PACKAGE_kmod-fs-ext4=y
 CONFIG_PACKAGE_kmod-fs-vfat=y
+CONFIG_PACKAGE_kmod-gpio-button-hotplug=y
 CONFIG_PACKAGE_kmod-lib-crc16=y
 CONFIG_PACKAGE_kmod-libphy=y
 CONFIG_PACKAGE_kmod-mii=y
