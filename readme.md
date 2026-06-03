@@ -14,4 +14,4 @@ Currently repositories are not setup so installing software doesn't
 work yet. Other than the ChinaMobile GS3101, none of the devices
 support persistent storage yet.
 
-LAST BUILD: MAY 29 2026
+LAST BUILD: JUNE 3 2026

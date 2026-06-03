@@ -3,7 +3,7 @@
 rm -rf ./openwrt
 git clone https://github.com/cjdelisle/openwrt.git
 cd openwrt || exit 1
-git checkout 9748f7ba602bff19a6271eb803b104989805c714
+git checkout 07f46e23c6cda4d7edb9d013ad56bc69bf75571a
 
 ./scripts/feeds update -a
 ./scripts/feeds install -a
