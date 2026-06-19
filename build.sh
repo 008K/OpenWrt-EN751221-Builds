@@ -1,9 +1,14 @@
 #!/bin/sh
 
+REPO=https://github.com/cjdelisle/openwrt.git
+HASH=07f46e23c6cda4d7edb9d013ad56bc69bf75571a
+
 rm -rf ./openwrt
-git clone https://github.com/cjdelisle/openwrt.git
-cd openwrt || exit 1
-git checkout 07f46e23c6cda4d7edb9d013ad56bc69bf75571a
+mkdir openwrt
+git init
+git remote add origin $REPO
+git fetch --depth 1 origin $HASH
+git checkout $HASH
 
 ./scripts/feeds update -a
 ./scripts/feeds install -a
@@ -57,6 +62,7 @@ CONFIG_PACKAGE_libpthread=y
 CONFIG_PACKAGE_librt=y
 CONFIG_PACKAGE_libstdcpp=y
 CONFIG_PACKAGE_r8152-firmware=y
+CONFIG_PACKAGE_wpad-basic-mbedtls=y
 CONFIG_TARGET_INITRAMFS_COMPRESSION_NONE=y
 CONFIG_TARGET_ROOTFS_INITRAMFS=y
 ' > .config
