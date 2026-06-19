@@ -5,6 +5,7 @@ HASH=07f46e23c6cda4d7edb9d013ad56bc69bf75571a
 
 rm -rf ./openwrt
 mkdir openwrt
+cd openwrt
 git init
 git remote add origin $REPO
 git fetch --depth 1 origin $HASH
