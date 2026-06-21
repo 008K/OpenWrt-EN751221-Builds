@@ -1,7 +1,7 @@
 #!/bin/sh
 
-REPO=https://github.com/naseef/openwrt.git
-HASH=0b418fbf629ffa5619d0f858a8690929ce2c388c
+REPO=https://github.com/cjdelisle/openwrt.git
+HASH=286e690b0a635e1ae14bad94b65dd534082d49ad
 
 rm -rf ./openwrt
 mkdir openwrt

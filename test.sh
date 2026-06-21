@@ -8,8 +8,8 @@ curl -fsSL https://raw.githubusercontent.com/cjdelisle/embedded-tools/refs/heads
 DEVICES=(
 	"smartfiber_xp8421_b"
 	"./openwrt/bin/targets/econet/en751221/openwrt-econet-en751221-smartfiber_xp8421-b-squashfs-tclinux.trx"
-	# "chinamobile_gs3101"
-	# "./openwrt/bin/targets/econet/en751221/openwrt-econet-en751221-chinamobile_gs3101-squashfs-tclinux.trx"
+	"chinamobile_gs3101"
+	"./openwrt/bin/targets/econet/en751221/openwrt-econet-en751221-chinamobile_gs3101-squashfs-tclinux.trx"
 )
 
 rm /tmp/tests_failed.txt 2>/dev/null
