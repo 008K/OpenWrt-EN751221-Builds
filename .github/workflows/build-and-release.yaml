@@ -43,3 +43,12 @@ jobs:
           echo "files_exist=false" >> $GITHUB_OUTPUT
           exit 1
         fi
+        
+    - name: Create Release and Upload Assets
+      if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && steps.check_files.outputs.files_exist == 'true'
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          ./openwrt/bin/targets/econet/en751221/openwrt-econet-chinamobile_gs2210-squashfs-factory.bin
+      env:
+        GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
