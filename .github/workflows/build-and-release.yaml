@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
     tags: [ 'v*' ]  # This will trigger on tags starting with 'v'
-    workflow_dispatch:
+  workflow_dispatch:
 
 jobs:
   build:
@@ -15,7 +15,7 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Make build.sh executable
-      run: chmod +x ./build.sh ./test.sh
+      run: chmod +x ./build.sh
 
     - name: Run build script
       run: ./build.sh
@@ -24,7 +24,7 @@ jobs:
       id: check_files
       run: |
         FILES=(
-          "./openwrt/bin/targets/econet/en751221/openwrt-econet-chinamobile_gs2210-squashfs-factory.bin"
+          "./openwrt/bin/targets/econet/en751221/openwrt-econet-cmhk_gs2210-squashfs-factory.bin"
         )
         ALL_EXIST=true
         for FILE in "${FILES[@]}"; do
@@ -49,6 +49,6 @@ jobs:
       uses: softprops/action-gh-release@v2
       with:
         files: |
-          ./openwrt/bin/targets/econet/en751221/openwrt-econet-chinamobile_gs2210-squashfs-factory.bin
+          ./openwrt/bin/targets/econet/en751221/openwrt-econet-cmhk_gs2210-squashfs-factory.bin
       env:
         GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
