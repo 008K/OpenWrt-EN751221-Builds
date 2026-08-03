@@ -156,6 +156,10 @@ trx_crc32() {
 }
 
 tclinux_trx_hdr() {
+	echo "***************************************************" >&2
+    echo "🔍 DEBUG: 當前 tclinux-trx 腳本接收到的 --model 實體參數為: [ $model ]" >&2
+    echo "🔍 DEBUG: 當前接收到的 --endian 實體參數為: [ $endian ]" >&2
+    echo "***************************************************" >&2
     # TRX header magic: "2RDH" for big endian, "HDR2" for little endian
 	if echo "$model" | grep -q -i -E "2210"; then
     #if echo "$model" | grep -q -i -E "GS2210"; then
