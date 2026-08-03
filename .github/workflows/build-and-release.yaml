@@ -24,7 +24,8 @@ jobs:
       id: check_files
       run: |
         FILES=(
-          "./openwrt/bin/targets/econet/en751221/openwrt-econet-cmhk_gs2210-squashfs-factory.bin"
+          "./openwrt/bin/targets/econet/en751221/openwrt-econet-en751221-cmhk_gs2210-initramfs-kernel.bin"
+          "./openwrt/bin/targets/econet/en751221/openwrt-econet-en751221-cmhk_gs2210-squashfs-tclinux.trx"
         )
         ALL_EXIST=true
         for FILE in "${FILES[@]}"; do
@@ -49,6 +50,7 @@ jobs:
       uses: softprops/action-gh-release@v2
       with:
         files: |
-          ./openwrt/bin/targets/econet/en751221/openwrt-econet-cmhk_gs2210-squashfs-factory.bin
+          ./openwrt/bin/targets/econet/en751221/openwrt-econet-en751221-cmhk_gs2210-initramfs-kernel.bin
+          ./openwrt/bin/targets/econet/en751221/openwrt-econet-en751221-cmhk_gs2210-squashfs-tclinux.trx
       env:
         GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
