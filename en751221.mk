@@ -111,7 +111,7 @@ define Device/cmhk_gs2210
   # 4. 【核心進化】流水線打包：先生成原生 trx，然後【原地】執行二進位覆寫
   # 在 OpenWrt Makefile 語法中，當前正在處理的文件對象用 $@ 表示
   # 為了防止 Make 把 \x43 等轉義字元誤解，我們改用更穩健的 printf 'CSK0'
-  IMAGE/tclinux.trx := append-kernel | tclinux-trx | sh -c "printf 'CSK0' | dd of=\$$@ bs=1 seek=0 conv=notrunc 2>/dev/null"
+  IMAGE/tclinux.trx := append-kernel | tclinux-trx
   
   DEVICE_PACKAGES := kmod-usb3 kmod-mt7603 kmod-mt76x2
 endef
