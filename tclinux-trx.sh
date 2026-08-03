@@ -209,7 +209,13 @@ tclinux_trx_hdr() {
     fi
 
     # Load address (CONFIG_ZBOOT_LOAD_ADDRESS)
-    hex32 0x80020000
+	if [ "$model" = "GS2210" ]; then
+        # 你的 CMHK GS2210 專屬黃金內存載入起始點！
+        hex32 0x80002000
+    else
+        # 常規型號保持標準地址
+        hex32 0x80020000
+    fi
 
     # "reserved" 128 bytes of zeros
     head -c 128 /dev/zero | to_hex
