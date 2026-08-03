@@ -15,172 +15,17 @@ git checkout $HASH
 # =====================================================================
 # 2. 【核心注入】通过 Shell 直接动态创建专属于 CMHK GS2210 的 DTS 设备树文件
 # =====================================================================
-DTS_PATH="target/linux/econet/dts/en751221_cmhk_gs2210.dts"
+DTS_PATH="target/linux/econet/dts/"
 echo "正在注入 CMHK GS2210 专属安全设备树 (DTS)..."
+cp -f ../en751221_cmhk_gs2210.dts $DTS_PATH
 
-cat << 'EOF' > "$DTS_PATH"
-// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
-/dts-v1/;
-
-#include "en751221.dtsi"
-
-/ {
-	model = "China Mobile HK GS2210";
-	compatible = "cmhk,gs2210", "econet,en751221";
-
-	memory@0 {
-		device_type = "memory";
-		reg = <0x00000000 0x20000000>; /* 512MB 总物理内存 */
-	};
-
-	chosen {
-		stdout-path = "/serial@1fbf0000:115200";
-		linux,usable-memory-range = <0x00020000 0x1b7e0000>; /* 对齐原厂 440MB 可用内存边界 */
-	};
-};
-
-&spi_nand {
-	status = "okay";
-	econet,bmt;
-
-	partitions {
-		compatible = "fixed-partitions";
-		#address-cells = <1>;
-		#size-cells = <1>;
-
-		/* mtd0: 256KB */
-		partition@0 {
-			label = "bootloader";
-			reg = <0x0 0x40000>;
-			read-only;
-
-			nvmem-layout {
-				compatible = "fixed-layout";
-				#address-cells = <1>;
-				#size-cells = <1>;
-
-				macaddr_bootloader_ff48: macaddr@ff48 {
-					compatible = "mac-base";
-					reg = <0xff48 0x6>;
-					#nvmem-cell-cells = <1>;
-				};
-			};
-		};
-
-		/* mtd1: 256KB */
-		partition@40000 {
-			label = "romfile";
-			reg = <0x40000 0x40000>;
-		};
-
-		/* mtd4: 16MB 主系统 (合并原厂内核与文件系统边界，绝不越界覆盖) */
-		partition@80000 {
-			label = "firmware";
-			reg = <0x80000 0x1000000>;
-		};
-
-		/* mtd7: 16MB 备份系统 */
-		partition@1080000 {
-			label = "tclinux_slave";
-			reg = <0x1080000 0x1000000>;
-			read-only;
-		};
-
-		/* mtd8: 52MB */
-		partition@2080000 {
-			label = "osgi";
-			reg = <0x2080000 0x3400000>;
-		};
-
-		/* mtd9: 128MB */
-		partition@5480000 {
-			label = "yaffs";
-			reg = <0x5480000 0x8000000>;
-		};
-
-		/* mtd10: 128KB */
-		partition@d480000 {
-			label = "upgradeflag";
-			reg = <0xd480000 0x20000>;
-		};
-
-		/* mtd11: 8MB */
-		partition@d4a0000 {
-			label = "scdata";
-			reg = <0xd4a0000 0x800000>;
-		};
-
-		/* mtd12: 1.75MB 保留配置区 */
-		partition@dca0000 {
-			label = "reservearea";
-			reg = <0xdca0000 0x1c0000>;
-			read-only;
-
-			nvmem-layout {
-				compatible = "fixed-layout";
-				#address-cells = <1>;
-				#size-cells = <1>;
-
-				eeprom_reserve_140000: eeprom@140000 {
-					reg = <0x140000 0x200>;
-				};
-
-				eeprom_reserve_180040: eeprom@180040 {
-					reg = <0x180040 0x600>;
-				};
-			};
-		};
-	};
-};
-
-&gmac0 {
-	status = "okay";
-	nvmem-cells = <&macaddr_bootloader_ff48 0>;
-	nvmem-cell-names = "mac-address";
-};
-
-&pcie0 { status = "okay"; };
-&slot0 {
-	wifi@0,0 {
-		compatible = "mediatek,mt76";
-		reg = <0x0000 0 0 0 0>;
-		nvmem-cells = <&eeprom_reserve_180040>, <&macaddr_bootloader_ff48 1>;
-		nvmem-cell-names = "eeprom", "mac-address";
-	};
-};
-
-&pcie1 { status = "okay"; };
-&slot1 {
-	wifi@0,0 {
-		compatible = "mediatek,mt76";
-		reg = <0x0000 0 0 0 0>;
-		nvmem-cells = <&eeprom_reserve_140000>, <&macaddr_bootloader_ff48 2>;
-		nvmem-cell-names = "eeprom", "mac-address";
-	};
-};
-EOF
 
 # =====================================================================
 # 3. 【核心追加】通过 Shell 向 image/en751221.mk 动态追加 GS2210 打包规则
 # =====================================================================
-MK_PATH="target/linux/econet/image/en751221.mk"
+MK_PATH="target/linux/econet/image/"
 echo "正在向 en751221.mk 追加专属打包链与 CSK0 原生魔数..."
-
-cat << 'EOF' >> "$MK_PATH"
-
-define Device/cmhk_gs2210
-  DEVICE_VENDOR := CMHK
-  DEVICE_MODEL := GS2210
-  DEVICE_DTS := en751221_cmhk_gs2210
-  SUPPORTED_DEVICES := cmhk,gs2210
-  IMAGES := tclinux.trx
-  IMAGE/tclinux.trx := append-kernel | lzma | tclinux-trx
-  TRX_MAGIC := 0x43534b30
-  DEVICE_PACKAGES := kmod-usb3 kmod-mt7603 kmod-mt76x2
-endef
-TARGET_DEVICES += cmhk_gs2210
-EOF
-
+cp -f ../en751221.mk $MK_PATH
 # =====================================================================
 # 4. 拉取依赖包并注入主编译使能开关配置
 # =====================================================================
