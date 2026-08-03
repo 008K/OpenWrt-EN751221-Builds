@@ -157,7 +157,7 @@ trx_crc32() {
 
 tclinux_trx_hdr() {
     # TRX header magic: "2RDH" for big endian, "HDR2" for little endian
-	if [ "$model" = "GS2210" ]; then
+	if echo "$model" | grep -q -i -E "2210"; then
     #if echo "$model" | grep -q -i -E "GS2210"; then
         if [ "$endian" = "le" ]; then
             # 小端序翻轉：CSK0 -> 0KSC -> \x30\x4b\x53\x43
@@ -209,7 +209,7 @@ tclinux_trx_hdr() {
     fi
 
     # Load address (CONFIG_ZBOOT_LOAD_ADDRESS)
-	if [ "$model" = "GS2210" ]; then
+	if echo "$model" | grep -q -i -E "2210"; then
         # 你的 CMHK GS2210 專屬黃金內存載入起始點！
         hex32 0x80002000
     else
