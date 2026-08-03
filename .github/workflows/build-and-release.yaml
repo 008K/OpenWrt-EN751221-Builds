@@ -28,7 +28,7 @@ jobs:
       id: check_files
       run: |
         FILES=(
-          "./openwrt/bin/targets/econet/en751221/openwrt-econet-en751221-cmhk_gs2210-initramfs-kernel.bin"
+          "./openwrt/bin/targets/econet/en751221/openwrt-econet-en751221-cmhk_gs2210_base-squashfs-tclinux.trx"
           "./openwrt/bin/targets/econet/en751221/openwrt-econet-en751221-cmhk_gs2210-squashfs-tclinux.trx"
         )
         ALL_EXIST=true
@@ -60,7 +60,7 @@ jobs:
         draft: false
         prerelease: false
         files: |
-          ./openwrt/bin/targets/econet/en751221/openwrt-econet-en751221-cmhk_gs2210-initramfs-kernel.bin
+          ./openwrt/bin/targets/econet/en751221/openwrt-econet-en751221-cmhk_gs2210_base-squashfs-tclinux.trx
           ./openwrt/bin/targets/econet/en751221/openwrt-econet-en751221-cmhk_gs2210-squashfs-tclinux.trx
       env:
         # 關鍵修正 3：改用系統內建的專用 Token
