@@ -158,11 +158,11 @@ trx_crc32() {
 tclinux_trx_hdr() {
 	local_kernel="$1"
 	echo "***************************************************" >&2
-    echo "🔍 DEBUG: 當前 tclinux-trx 腳本接收到的 --kernel 實體參數為: [ $local_kernel ]" >&2
+    echo "🔍 DEBUG: 當前 tclinux-trx 腳本接收到的 --local_kernel 實體參數為: [ $local_kernel ]" >&2
     echo "🔍 DEBUG: 當前接收到的 --endian 實體參數為: [ $endian ]" >&2
     echo "***************************************************" >&2
     # TRX header magic: "2RDH" for big endian, "HDR2" for little endian
-	if echo "$local_kernel" | grep -q -i -E "cmhk_gs2210-kernel"; then
+	if echo "$local_kernel" | grep -q -i -E "cmhk_gs2210"; then
     #if echo "$model" | grep -q -i -E "GS2210"; then
         if [ "$endian" = "le" ]; then
             # 小端序翻轉：CSK0 -> 0KSC -> \x30\x4b\x53\x43
@@ -214,7 +214,7 @@ tclinux_trx_hdr() {
     fi
 
     # Load address (CONFIG_ZBOOT_LOAD_ADDRESS)
-	if echo "$local_kernel" | grep -q -i -E "cmhk_gs2210-kernel"; then
+	if echo "$local_kernel" | grep -q -i -E "cmhk_gs2210"; then
         # 你的 CMHK GS2210 專屬黃金內存載入起始點！
         hex32 0x80002000
     else
