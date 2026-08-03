@@ -100,7 +100,7 @@ define Device/cmhk_gs2210
   SUPPORTED_DEVICES := cmhk,gs2210
   
   # 1. 嚴格限定內核分區上限為 4MB，確保 rootfs 絕對安全 [2021-08-01]
-  KERNEL_SIZE := 4096k
+  # KERNEL_SIZE := 4096k
   
   # 2. 注入 free bootbase 內存跳轉墊片，解決地址錯位死機
   KERNEL := kernel-bin | append-dtb | tclinux-free-bootbase-jump | lzma
