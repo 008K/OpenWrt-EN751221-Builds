@@ -98,46 +98,8 @@ define Device/cmhk_gs2210
   DEVICE_MODEL := GS2210
   DEVICE_DTS := en751221_cmhk_gs2210
   SUPPORTED_DEVICES := cmhk,gs2210
-  
-  # 1. 嚴格限定內核分區上限為 4MB，確保 rootfs 絕對安全 [2021-08-01]
-  KERNEL_SIZE := 4096k
-  
-  # 2. 注入 free bootbase 內存跳轉墊片，解決地址錯位死機
-  KERNEL := kernel-bin | append-dtb | tclinux-free-bootbase-jump | lzma
-  
-  # 3. 聲明產出鏡像檔名 [2021-08-01]
   IMAGES := tclinux.trx
-  
-  # 4. 【核心進化】流水線打包：先生成原生 trx，然後【原地】執行二進位覆寫
-  # 在 OpenWrt Makefile 語法中，當前正在處理的文件對象用 $@ 表示
-  # 為了防止 Make 把 \x43 等轉義字元誤解，我們改用更穩健的 printf 'CSK0'
   IMAGE/tclinux.trx := append-kernel | tclinux-trx
-  
   DEVICE_PACKAGES := kmod-usb3 kmod-mt7603 kmod-mt76x2
 endef
 TARGET_DEVICES += cmhk_gs2210
-
-define Device/cmhk_gs2210_nobase
-  DEVICE_VENDOR := CMHK
-  DEVICE_MODEL := GS2210
-  DEVICE_DTS := en751221_cmhk_gs2210
-  SUPPORTED_DEVICES := cmhk,gs2210
-  
-  # 1. 嚴格限定內核分區上限為 4MB，確保 rootfs 絕對安全 [2021-08-01]
-  KERNEL_SIZE := 4096k
-  
-  # 2. 注入 free bootbase 內存跳轉墊片，解決地址錯位死機
-  KERNEL := kernel-bin | append-dtb | lzma
-  
-  # 3. 聲明產出鏡像檔名 [2021-08-01]
-  IMAGES := tclinux.trx
-  
-  # 4. 【核心進化】流水線打包：先生成原生 trx，然後【原地】執行二進位覆寫
-  # 在 OpenWrt Makefile 語法中，當前正在處理的文件對象用 $@ 表示
-  # 為了防止 Make 把 \x43 等轉義字元誤解，我們改用更穩健的 printf 'CSK0'
-  IMAGE/tclinux.trx := append-kernel | tclinux-trx
-  
-  DEVICE_PACKAGES := kmod-usb3 kmod-mt7603 kmod-mt76x2
-endef
-TARGET_DEVICES += cmhk_gs2210_nobase
-
