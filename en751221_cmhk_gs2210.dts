@@ -120,6 +120,12 @@
 	};
 };
 
+&gmac0 {
+	status = "okay";
+	nvmem-cells = <&macaddr_bootloader_ff48 0>;
+	nvmem-cell-names = "mac-address";
+};
+
 &uart { status = "okay"; };
 &pcie0 { status = "okay"; };
 &slot0 {
