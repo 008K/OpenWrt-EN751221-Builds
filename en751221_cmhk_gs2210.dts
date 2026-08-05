@@ -103,19 +103,6 @@
 			reg = <0xdca0000 0x1c0000>;
 			read-only;
 
-			nvmem-layout {
-				compatible = "fixed-layout";
-				#address-cells = <1>;
-				#size-cells = <1>;
-
-				eeprom_reserve_0: eeprom@0 {
-					reg = <0x0000 0x200>;
-				};
-
-				eeprom_reserve_2000: eeprom@2000 {
-					reg = <0x2000 0x600>;
-				};
-			};
 		};
 	};
 };
@@ -132,8 +119,8 @@
 	wifi@0,0 {
 		compatible = "mediatek,mt76";
 		reg = <0x0000 0 0 0 0>;
-		nvmem-cells = <&eeprom_reserve_2000>, <&macaddr_bootloader_ff48 1>;
-		nvmem-cell-names = "eeprom", "mac-address";
+		nvmem-cells = <&macaddr_bootloader_ff48 1>;
+		nvmem-cell-names = "mac-address";
 	};
 };
 
@@ -143,7 +130,7 @@
 	wifi@0,0 {
 		compatible = "mediatek,mt76";
 		reg = <0x0000 0 0 0 0>;
-		nvmem-cells = <&eeprom_reserve_0>, <&macaddr_bootloader_ff48 2>;
-		nvmem-cell-names = "eeprom", "mac-address";
+		nvmem-cells = <&macaddr_bootloader_ff48 2>;
+		nvmem-cell-names = "mac-address";
 	};
 };
