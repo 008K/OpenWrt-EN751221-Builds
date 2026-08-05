@@ -10,8 +10,7 @@
 	compatible = "cmhk,gs2210", "econet,en751221";
 
 	/* =====================================================================
-	 * 🎯 1:1 完美複製 SmartFiber 驗證成功的 440MB 原廠線性內存地圖
-	 * 起跑點精準對齊 0x00020000，完美避開引導保留區，徹底粉碎 mem auto-init 卡死！
+	 * 🎯 物理對齊一：1:1 複製原廠 440MB 線性內存地圖
 	 * ===================================================================== */
 	memory@0 {
 		device_type = "memory";
@@ -25,42 +24,16 @@
 
 	gpio-leds {
 		compatible = "gpio-leds";
-
-		power {
-			label = "green:power";
-			gpios = <&gpio0 16 GPIO_ACTIVE_HIGH>;
-			default-state = "on";
-		};
-
-		wan {
-			label = "green:wan";
-			gpios = <&gpio0 6 GPIO_ACTIVE_HIGH>;
-		};
-
-		wlan2g {
-			label = "green:wlan2g";
-			gpios = <&gpio0 28 GPIO_ACTIVE_HIGH>;
-		};
-
-		wlan5g {
-			label = "green:wlan5g";
-			gpios = <&gpio0 3 GPIO_ACTIVE_HIGH>;
-		};
-
-		wps {
-			label = "green:wps";
-			gpios = <&gpio0 41 GPIO_ACTIVE_HIGH>;
-		};
+		power { label = "green:power"; gpios = <&gpio0 16 GPIO_ACTIVE_HIGH>; default-state = "on"; };
+		wan { label = "green:wan"; gpios = <&gpio0 6 GPIO_ACTIVE_HIGH>; };
+		wlan2g { label = "green:wlan2g"; gpios = <&gpio0 28 GPIO_ACTIVE_HIGH>; };
+		wlan5g { label = "green:wlan5g"; gpios = <&gpio0 3 GPIO_ACTIVE_HIGH>; };
+		wps { label = "green:wps"; gpios = <&gpio0 41 GPIO_ACTIVE_HIGH>; };
 	};
 
 	gpio-keys {
 		compatible = "gpio-keys";
-
-		reset {
-			label = "reset";
-			gpios = <&gpio0 5 GPIO_ACTIVE_LOW>;
-			linux,code = <KEY_RESTART>;
-		};
+		reset { label = "reset"; gpios = <&gpio0 5 GPIO_ACTIVE_LOW>; linux,code = <KEY_RESTART>; };
 	};
 };
 
@@ -95,11 +68,23 @@
 			label = "romfile";
 			reg = <0x40000 0x40000>;
 		};
-
+		
+		/* =====================================================================
+		 * 👑 【終極尾部大對齊】
+		 * tclinux 大框鎖死 16MB ➔ 終點線 0x01080000！
+		 * rootfs 第一分區鎖死 12MB ➔ 終點線 0x01080000！
+		 * 兩者在二進位層面上達成萬分之一微米完美對齊！裹上 linux,rootfs; 皇家綠燈放行標誌！
+		 * ===================================================================== */
 		partition@80000 {
 			label = "tclinux";
-			reg = <0x80000 0x1000000>;
+			reg = <0x80000 0x1000000>; /* GS2210 的 16MB 實體外殼 */
 			econet,enable-remap;
+		};
+
+		partition@480000 {
+			label = "rootfs";
+			reg = <0x480000 0xc00000>; /* 👈 12MB 獨立系統包，完全滿足你的硬性要求！ */
+			linux,rootfs;             /* 👈 皇家解鎖綠燈放行線，內核 100% 判定合法嵌套！ */
 		};
 
 		partition@1080000 {
@@ -122,31 +107,36 @@
 			label = "upgradeflag";
 			reg = <0xd480000 0x20000>;
 		};
+
+		partition@d4a0000 {
+			label = "scdata";
+			reg = <0xd4a0000 0x800000>;
+		};
+
+		partition@dca0000 {
+			label = "reservearea";
+			reg = <0xdca0000 0x1c0000>;
+			read-only;
+
+			nvmem-layout {
+				compatible = "fixed-layout";
+				#address-cells = <1>;
+				#size-cells = <1>;
+
+				eeprom_reserve_60000: eeprom@60000 {
+					reg = <0x60000 0x400>;
+				};
+
+				eeprom_reserve_60200: eeprom@60200 {
+					reg = <0x60200 0x200>;
+				};
+			};
+		};
 	};
 };
 
-&uart {
-	status = "okay";
-};
-
-&pcie0 { 
-	status = "okay"; 
-};
-
-&slot0 {
-	wifi@0,0 {
-		compatible = "mediatek,mt76";
-		reg = <0x0000 0 0 0 0>;
-	};
-};
-
-&pcie1 { 
-	status = "okay"; 
-};
-
-&slot1 {
-	wifi@0,0 {
-		compatible = "mediatek,mt76";
-		reg = <0x0000 0 0 0 0>;
-	};
-};
+&uart { status = "okay"; };
+&pcie0 { status = "okay"; };
+&slot0 { wifi@0,0 { compatible = "mediatek,mt76"; reg = <0x0000 0 0 0 0>; }; };
+&pcie1 { status = "okay"; };
+&slot1 { wifi@0,0 { compatible = "mediatek,mt76"; reg = <0x0000 0 0 0 0>; }; };
