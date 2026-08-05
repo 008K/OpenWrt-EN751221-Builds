@@ -100,9 +100,24 @@
 
 		partition@dca0000 {
 			label = "reservearea";
-			reg = <0xdca0000 0x1c0000>;
+			reg = <0xdca0000 0x1c0000>; 
 			read-only;
 
+			nvmem-layout {
+				compatible = "fixed-layout";
+				#address-cells = <1>;
+				#size-cells = <1>;
+
+				/* 🟢 MT7592 (2.4G) 校準格子 - 精準直奔原廠認證的十進位 1310720 (0x140000) */
+				eeprom_reserve_140000: eeprom@140000 {
+					reg = <0x140000 0x200>;
+				};
+
+				/* 🟢 MT7612E (5G) 校準格子 - 精準直奔原廠認證的十進位 1572928 (0x180040) */
+				eeprom_reserve_180040: eeprom@180040 {
+					reg = <0x180040 0x200>;
+				};
+			};
 		};
 	};
 };
@@ -115,12 +130,14 @@
 
 &uart { status = "okay"; };
 &pcie0 { status = "okay"; };
+
 &slot0 {
 	wifi@0,0 {
 		compatible = "mediatek,mt76";
 		reg = <0x0000 0 0 0 0>;
-		nvmem-cells = <&macaddr_bootloader_ff48 1>;
-		nvmem-cell-names = "mac-address";
+		/* Aligns 5G core straight into your verified 0x180040 data lanes */
+		nvmem-cells = <&eeprom_reserve_180040>, <&macaddr_bootloader_ff48 1>;
+		nvmem-cell-names = "eeprom", "mac-address";
 	};
 };
 
@@ -130,7 +147,8 @@
 	wifi@0,0 {
 		compatible = "mediatek,mt76";
 		reg = <0x0000 0 0 0 0>;
-		nvmem-cells = <&macaddr_bootloader_ff48 2>;
-		nvmem-cell-names = "mac-address";
+		/* Aligns 2.4G core straight into your verified 0x140000 data lanes */
+		nvmem-cells = <&eeprom_reserve_140000>, <&macaddr_bootloader_ff48 2>;
+		nvmem-cell-names = "eeprom", "mac-address";
 	};
 };
