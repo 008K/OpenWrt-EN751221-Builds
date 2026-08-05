@@ -98,9 +98,8 @@ define Device/cmhk_gs2210
   DEVICE_MODEL := GS2210
   DEVICE_DTS := en751221_cmhk_gs2210
   SUPPORTED_DEVICES := cmhk,gs2210
-  KERNEL := kernel-bin | append-dtb | lzma 
   IMAGES := tclinux.trx
-  IMAGE/tclinux.trx := append-kernel | tclinux-trx
+  IMAGE/tclinux.trx := append-kernel | lzma | tclinux-trx
   DEVICE_PACKAGES := kmod-usb3 kmod-mt7603 kmod-mt76x2
 endef
 TARGET_DEVICES += cmhk_gs2210
