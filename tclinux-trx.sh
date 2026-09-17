@@ -156,23 +156,19 @@ trx_crc32() {
 }
 
 tclinux_trx_hdr() {
-	local_kernel="$1"
-	echo "***************************************************" >&2
-    echo "🔍 DEBUG: 當前 tclinux-trx 腳本接收到的 --kernel 實體參數為: [ $local_kernel ]" >&2
-    echo "🔍 DEBUG: 當前接收到的 --endian 實體參數為: [ $endian ]" >&2
-    echo "***************************************************" >&2
-    # TRX header magic: "2RDH" for big endian, "HDR2" for little endian
-	if echo "$local_kernel" | grep -q -i "cmhk_gs2210"; then
-    #if echo "$model" | grep -q -i -E "GS2210"; then
+    # TRX header magic: "2RDH" for big endian, "HDR2" for little endian.
+    # The CMHK GS2210 uses the older TrendChip "tclinux" header, whose magic is
+    # "CSK0" (verified on the stock image: 43 53 4b 30 at offset 0 of both the
+    # tclinux and tclinux_slave partitions). It is selected by --model, because
+    # matching on the image file name would also match the subtarget name
+    # "en751221" and change the magic for every other device in this target.
+    if [ "$model" = "GS2210" ]; then
         if [ "$endian" = "le" ]; then
-            # 小端序翻轉：CSK0 -> 0KSC -> \x30\x4b\x53\x43
             printf '0KSC' | to_hex
         else
-            # 你的 CMHK GS2210 是 MIPS 大端序，正序發射：CSK0 -> \x43\x53\x4b\x30
             printf 'CSK0' | to_hex
         fi
     else
-        # 🟢 常規型號：完美退回原廠標準，走 2RDH 或 HDR2 打包鏈
         if [ "$endian" = "le" ]; then
             printf 'HDR2' | to_hex
         else
@@ -214,18 +210,20 @@ tclinux_trx_hdr() {
     fi
 
     # Load address (CONFIG_ZBOOT_LOAD_ADDRESS)
-	#if echo "$local_kernel" | grep -q -i "cmhk_gs2210"; then
-        # 你的 CMHK GS2210 專屬黃金內存載入起始點！
-       # hex32 0x80002000
-    #else
-        # 常規型號保持標準地址
-	hex32 0x80020000
+    # This is the address at which the kernel is linked (KERNEL_LOADADDR in the
+    # image Makefile), NOT the address the bootloader decompresses to. The
+    # GS2210 bootloader is a "free bootbase" build, which always decompresses to
+    # 0x80002000 (its stock image header says exactly that), so the kernel is
+    # linked at 0x80020000 and the tclinux-free-bootbase-jump build step
+    # prepends a 0x1e000 byte trampoline that hops from 0x80002000 to
+    # 0x80020000. Writing 0x80002000 here would contradict that shim.
+    hex32 0x80020000
 
     # "reserved" 128 bytes of zeros
     head -c 128 /dev/zero | to_hex
 }
 
-tclinux_trx_hdr "$kernel" | from_hex
+tclinux_trx_hdr | from_hex
 cat "$kernel"
 padding
 if [ -f "$rootfs" ]; then

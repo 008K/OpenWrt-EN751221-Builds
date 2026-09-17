@@ -98,8 +98,25 @@ define Device/cmhk_gs2210
   DEVICE_MODEL := GS2210
   DEVICE_DTS := en751221_cmhk_gs2210
   SUPPORTED_DEVICES := cmhk,gs2210
+
+  # tclinux-trx.sh keys the "CSK0" header magic off this value
+  TRX_MODEL := GS2210
+  
+  # 1. 嚴格限定內核分區上限為 4MB，確保 rootfs 絕對安全 [2021-08-01]
+  # KERNEL_SIZE := 4096k
+  
+  # 2. 注入 free bootbase 內存跳轉墊片，解決地址錯位死機
+  KERNEL := kernel-bin | append-dtb | tclinux-free-bootbase-jump | lzma
+  
+  # 3. 聲明產出鏡像檔名 [2021-08-01]
   IMAGES := tclinux.trx
-  IMAGE/tclinux.trx := append-kernel | lzma | tclinux-trx
+  
+  # 4. IMPORTANT: this must stay "append-kernel" without lzma, because the
+  #    free bootbase trampoline is already part of the KERNEL build step above.
+  #    This pipeline appends the finished kernel image and then wraps it in the
+  #    "CSK0" tclinux header (TRX_MODEL above selects that magic).
+  IMAGE/tclinux.trx := append-kernel | tclinux-trx
+  
   DEVICE_PACKAGES := kmod-usb3 kmod-mt7603 kmod-mt76x2
 endef
 TARGET_DEVICES += cmhk_gs2210
