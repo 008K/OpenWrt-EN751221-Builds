@@ -1,4 +1,19 @@
 #!/bin/sh
+#
+# Build the OpenWrt image for the China Mobile Hong Kong GS2210 (EN751221).
+#
+# This checks out the pinned upstream tree, overlays the GS2210 board support
+# files kept in this repository, and builds the tclinux.trx image.
+#
+# The script can be run from any directory: it always operates on the
+# directory that holds it.
+
+# Stop at the first failing step, and treat unset variables as an error.
+set -eu
+
+# The rm -rf and the overlay copies below are relative paths, so anchor them to
+# this script's directory instead of the caller's working directory.
+cd "$(dirname "$0")"
 
 REPO=https://github.com/cjdelisle/openwrt.git
 HASH=ba9f212b567ee1cda360ba1fdb98629862ec974b
@@ -7,17 +22,17 @@ HASH=ba9f212b567ee1cda360ba1fdb98629862ec974b
 rm -rf ./openwrt
 mkdir openwrt
 cd openwrt
-git init
-git remote add origin $REPO
-git fetch --depth 1 origin $HASH
-git checkout $HASH
+git init -q
+git remote add origin "$REPO"
+git fetch --depth 1 origin "$HASH"
+git checkout "$HASH"
 
 # =====================================================================
 # 2. 【核心注入】通过 Shell 直接动态创建专属于 CMHK GS2210 的 DTS 设备树文件
 # =====================================================================
 DTS_PATH="target/linux/econet/dts/"
 echo "正在注入 CMHK GS2210 专属安全设备树 (DTS)..."
-cp -f ../en751221_cmhk_gs2210.dts $DTS_PATH
+cp -f ../en751221_cmhk_gs2210.dts "$DTS_PATH"
 
 
 # =====================================================================
@@ -25,8 +40,8 @@ cp -f ../en751221_cmhk_gs2210.dts $DTS_PATH
 # =====================================================================
 MK_PATH="target/linux/econet/image/"
 echo "正在向 en751221.mk 追加专属打包链与 CSK0 原生魔数..."
-cp -f ../en751221.mk $MK_PATH
-cp -f ../tclinux-trx.sh $MK_PATH
+cp -f ../en751221.mk "$MK_PATH"
+cp -f ../tclinux-trx.sh "$MK_PATH"
 
 # =====================================================================
 # 4. 拉取依赖包并注入主编译使能开关配置
@@ -34,7 +49,9 @@ cp -f ../tclinux-trx.sh $MK_PATH
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 
-echo '
+# The seed must be written after the overlay files, otherwise make defconfig
+# drops symbols whose device or package does not exist yet.
+cat > .config <<'CONFIG_EOF'
 CONFIG_TARGET_econet=y
 CONFIG_TARGET_econet_en751221=y
 CONFIG_TARGET_MULTI_PROFILE=y
@@ -74,21 +91,33 @@ CONFIG_PACKAGE_r8152-firmware=y
 CONFIG_PACKAGE_wpad-basic-mbedtls=y
 CONFIG_TARGET_INITRAMFS_COMPRESSION_NONE=y
 CONFIG_TARGET_ROOTFS_INITRAMFS=y
-' > .config
+CONFIG_EOF
 
 # 5. 校验并补全依赖配置项
 make defconfig
 
-# 6. 火力全开加速编译
-make "-j$(nproc)"
+# 6. 火力全开加速编译 (nproc is not POSIX, fall back to a single job)
+make -j"$(nproc 2>/dev/null || echo 1)"
 
 # =====================================================================
 # 7. 固件后处理：更名并提取专属于 CMHK GS2210 的完美包
 # =====================================================================
 cd ./bin/targets/econet/en751221
 
-# 执行原作者固有的更名规整命令
-ls | sed -n -e 's/openwrt-snapshot-\(.*\)-econet-\(.*\)/mv openwrt-snapshot-\1-econet-\2 openwrt-econet-\2/p' | sh
+# Normalise the image file names by dropping the version prefix. Written as a
+# glob rather than "ls | sed | sh" so that no file name is ever executed.
+for f in openwrt-*-econet-en751221-*; do
+    [ -f "$f" ] || continue
+    mv "$f" "openwrt-econet-${f##*-econet-}"
+done
 
-# 捕获刚刚用 tclinux-trx 包装好且自带闭合原生 CSK0 CRC 的 trx 固件
-echo "✅ 固件打包完成."
+# Fail loudly if the image is missing, so a broken build cannot be reported as
+# a success by the trailing message.
+OUT="openwrt-econet-en751221-cmhk_gs2210-squashfs-tclinux.trx"
+if [ ! -f "$OUT" ]; then
+    echo "ERROR: $OUT was not produced" >&2
+    ls -l >&2
+    exit 1
+fi
+
+echo "✅ 固件打包完成: $OUT"
