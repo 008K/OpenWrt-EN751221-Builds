@@ -27,6 +27,15 @@ git remote add origin "$REPO"
 git fetch --depth 1 origin "$HASH"
 git checkout "$HASH"
 
+# CI hands us a download directory that lives outside the tree: this script
+# deletes and re-fetches ./openwrt on every run, so downloads kept in the
+# tree's own dl/ would never survive into the next build. Symlinking the
+# external directory into place is all make needs to see.
+if [ -n "${OPENWRT_DL_DIR:-}" ]; then
+    mkdir -p "$OPENWRT_DL_DIR"
+    ln -sfn "$OPENWRT_DL_DIR" dl
+fi
+
 # =====================================================================
 # 2. 【核心注入】通过 Shell 直接动态创建专属于 CMHK GS2210 的 DTS 设备树文件
 # =====================================================================
@@ -91,33 +100,62 @@ CONFIG_PACKAGE_r8152-firmware=y
 CONFIG_PACKAGE_wpad-basic-mbedtls=y
 CONFIG_TARGET_INITRAMFS_COMPRESSION_NONE=y
 CONFIG_TARGET_ROOTFS_INITRAMFS=y
+# Keep the version out of the image file names. The image, sha256sums and
+# profiles.json all take their names from these two prefixes; leaving them on
+# yields openwrt-snapshot-<revision>-econet-en751221-..., which is why the build
+# used to rename the image afterwards and leave sha256sums pointing at a file
+# name that no longer existed.
+# VERSIONOPT must be enabled first: both prompts are hidden behind
+# "if VERSIONOPT", and a hidden prompt makes them ignore what is written here
+# and fall back to their default of "y".
+CONFIG_VERSIONOPT=y
+# CONFIG_VERSION_FILENAMES is not set
+# CONFIG_VERSION_CODE_FILENAMES is not set
 CONFIG_EOF
 
 # 5. 校验并补全依赖配置项
 make defconfig
 
+# Fail here rather than an hour into the build if the seed above did not take
+# effect: the releases job downloads the image by an unversioned name.
+if grep -qE '^CONFIG_VERSION_(CODE_)?FILENAMES=y' .config; then
+    echo "ERROR: version prefixes are still enabled in .config" >&2
+    grep -E '^CONFIG_VERSION' .config >&2 || true
+    exit 1
+fi
+
 # 6. 火力全开加速编译 (nproc is not POSIX, fall back to a single job)
 make -j"$(nproc 2>/dev/null || echo 1)"
 
 # =====================================================================
-# 7. 固件后处理：更名并提取专属于 CMHK GS2210 的完美包
+# 7. 固件后处理：校验产物并输出校验值
 # =====================================================================
 cd ./bin/targets/econet/en751221
 
-# Normalise the image file names by dropping the version prefix. Written as a
-# glob rather than "ls | sed | sh" so that no file name is ever executed.
-for f in openwrt-*-econet-en751221-*; do
-    [ -f "$f" ] || continue
-    mv "$f" "openwrt-econet-${f##*-econet-}"
-done
-
+# Nothing to rename here any more: with the version prefixes switched off in
+# .config, the image lands under the name the release job expects, which is also
+# the name sha256sums and profiles.json recorded for it.
+#
 # Fail loudly if the image is missing, so a broken build cannot be reported as
 # a success by the trailing message.
 OUT="openwrt-econet-en751221-cmhk_gs2210-squashfs-tclinux.trx"
 if [ ! -f "$OUT" ]; then
     echo "ERROR: $OUT was not produced" >&2
-    ls -l >&2
+    ls -1 >&2
     exit 1
 fi
 
+# sha256sums is generated from the files on disk, so it has to list the image we
+# are about to publish; checking it here keeps a name mismatch from shipping as
+# a release asset that nobody can verify.
+if [ -f sha256sums ]; then
+    if ! grep -qF -- "$OUT" sha256sums; then
+        echo "ERROR: $OUT is missing from sha256sums" >&2
+        grep -F -- 'econet-en751221' sha256sums >&2 || true
+        exit 1
+    fi
+    grep -F -- "$OUT" sha256sums | sha256sum -c -
+fi
+
+sha256sum "$OUT"
 echo "✅ 固件打包完成: $OUT"

@@ -9,14 +9,38 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+
     # 關鍵修正 1：賦予這個 Job 建立和寫入 Release 的權限
     permissions:
       contents: write
 
+    env:
+      # build.sh 每次都會 rm -rf ./openwrt，所以下載目錄必須放在樹外才快取得到；
+      # 放在樹內的 openwrt/dl 每次建置都會一起被砍掉。
+      OPENWRT_DL_DIR: ${{ github.workspace }}/dl
+
     steps:
+    # ubuntu-latest 開局大約只剩 14 GB，全量 OpenWrt 建置剛好卡在臨界點上。
+    # 只刪 runner 預裝、這個建置用不到的東西；hostedtoolcache 要留著，python 靠它。
+    - name: Free disk space
+      run: |
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+          /usr/local/share/boost /usr/share/swift
+        sudo apt-get clean
+        df -h /
+
     - name: Checkout repository
       uses: actions/checkout@v4
+
+    # 快取的是樹外的 dl/，所以不會被 build.sh 的 rm -rf ./openwrt 影響。
+    # key 帶 run_id 代表每次都會寫回一份新的；restore-keys 則保證接得上上一份。
+    - name: Restore package downloads
+      uses: actions/cache@v4
+      with:
+        path: dl
+        key: openwrt-dl-${{ hashFiles('build.sh') }}-${{ github.run_id }}
+        restore-keys: |
+          openwrt-dl-${{ hashFiles('build.sh') }}-
 
     # 關鍵修正 4：明確安裝 OpenWrt 編譯相依套件，不要依賴 runner 映像剛好內建
     - name: Install build dependencies
@@ -42,6 +66,7 @@ jobs:
         for FILE in "${FILES[@]}"; do
           if [ -f "$FILE" ]; then
             echo "$FILE exists"
+            sha256sum "$FILE"
           else
             echo "$FILE does not exist"
             ALL_EXIST=false
@@ -55,7 +80,7 @@ jobs:
           echo "files_exist=false" >> $GITHUB_OUTPUT
           exit 1
         fi
-        
+
     - name: Create Release and Upload Assets
       # 簡化判斷邏輯：只要檔案存在，且是由 push tag 或手動觸發/推送到 main 就執行
       if: steps.check_files.outputs.files_exist == 'true'
