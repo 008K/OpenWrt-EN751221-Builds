@@ -99,14 +99,20 @@ define Device/cmhk_gs2210
   DEVICE_DTS := en751221_cmhk_gs2210
   SUPPORTED_DEVICES := cmhk,gs2210
 
-  # tclinux-trx.sh keys the "CSK0" header magic off this value
+  # Selects the legacy "CSK0" tclinux header magic and the matching 0x80002000
+  # load address in tclinux-trx.sh. The stock image uses both, and neither works
+  # without the other.
   TRX_MODEL := GS2210
   
-  # 1. 嚴格限定內核分區上限為 4MB，確保 rootfs 絕對安全 [2021-08-01]
-  # KERNEL_SIZE := 4096k
-  
   # 2. 注入 free bootbase 內存跳轉墊片，解決地址錯位死機
-  KERNEL := kernel-bin | append-dtb | tclinux-free-bootbase-jump | lzma
+  #    The trampoline links the kernel at 0x80020000 and shifts it up by
+  #    0x1e000 bytes, so it only works when the tclinux header asks the
+  #    bootloader to decompress at 0x80002000 (TRX_MODEL above arranges that).
+  #    The free bootbase only offers about 7.5MB of decompression space, so fail
+  #    the build instead of shipping a payload that could never be decompressed.
+  KERNEL_DECOMPRESSED_SIZE := 7672k
+  KERNEL := kernel-bin | append-dtb | tclinux-free-bootbase-jump | \
+    check-size $$(KERNEL_DECOMPRESSED_SIZE) | lzma
   
   # 3. 聲明產出鏡像檔名 [2021-08-01]
   IMAGES := tclinux.trx
