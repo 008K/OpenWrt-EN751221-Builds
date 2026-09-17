@@ -210,24 +210,15 @@ tclinux_trx_hdr() {
     fi
 
     # Load address (CONFIG_ZBOOT_LOAD_ADDRESS)
-    # This is where the bootloader decompresses the kernel payload, and the
-    # address it starts executing from. The stock GS2210 image stores 0x80002000
-    # here (verified in the header of both the tclinux and tclinux_slave
-    # partitions) even though the code that ends up running does not live there:
-    # the stock kernel payload starts with a jump trampoline (08 00 1b 64 =
-    # "j 0x80006d90") followed by zero padding. That is the same scheme as the
-    # tclinux-free-bootbase-jump build step used for this device, which links
-    # the kernel at 0x80020000 and prepends a 0x1e000 byte zero-filled gap, so
-    # the payload has to be decompressed at 0x80002000 for the trampoline to
-    # land on the kernel. Asking for 0x80020000 instead (as this script used to)
-    # makes the bootloader place the trampoline at its own jump target: the CPU
-    # spins on that self-jump forever and the console shows nothing at all after
-    # "Uncompressing [LZMA] ... done."
-    if [ "$model" = "GS2210" ]; then
-        hex32 0x80002000
-    else
-        hex32 0x80020000
-    fi
+    # Where the bootloader decompresses the kernel payload, and where it starts
+    # executing. This board's bootloader honours the field: the console prints
+    # "Decompress to 80020000" for our own image, and the stock image stores
+    # 0x80002000 here even though the code that runs does not live there (its
+    # kernel payload begins with a jump trampoline, 08 00 1b 64 = "j 0x80006d90",
+    # followed by zero padding, so the vendor shifts the kernel up by hand).
+    # Our kernel is linked at 0x80020000 and is not shifted, so ask for exactly
+    # that and no shim is needed.
+    hex32 0x80020000
 
     # "reserved" 128 bytes of zeros
     head -c 128 /dev/zero | to_hex
