@@ -1,0 +1,223 @@
+# ChinaMobile HK GS2210 (econet EN751221)
+#
+# This board has no usable overlay partition out of the box. / is a read-only
+# squashfs, and the partition OpenWrt would normally use for the overlay
+# (mtd4, "rootfs_data") is not an option here:
+#
+#   * it is the tail of the firmware partition that mtdsplit cuts off behind
+#     the squashfs, so its offset moves up whenever the image grows, and
+#   * it cannot hold jffs2, because jffs2 reads its erase block clean markers
+#     from the OOB area and this SPI-NAND/BMT driver rejects OOB reads:
+#
+#     jffs2: cannot read OOB for EB at 00700000, requested 8 bytes, read 0 bytes, error -77
+#     mount_root: failed to mount -t jffs2 /dev/mtdblock4 /tmp/overlay: I/O error
+#
+# The stock firmware never used the "yaffs" partition (mtd7, 128MB) on this
+# board either: only its first erase blocks carry data and the rest is erased,
+# and no OpenWrt code path looks at it. So turn that partition into a UBI
+# device holding a volume named "rootfs_data". fstools looks for that name in
+# its UBI driver before its MTD driver (priority 20 against 10), so the volume
+# wins over the unmountable mtd4, and 80_mount_root - the hook right after this
+# one - mounts it as the overlay. That is the same arrangement the GS3101 has,
+# which ships its overlay as a UBI volume inside the image.
+#
+# There is no mkfs.ubifs on this board and none is needed: the kernel creates
+# the file system itself when an empty UBI volume is mounted read-write, which
+# is exactly what fstools does with the volume this hook leaves behind:
+#
+#   UBIFS (ubi0:0): default file-system created
+#   UBIFS (ubi0:0): UBIFS: mounted UBI device 0, volume 0, name "rootfs_data"
+#   UBIFS (ubi0:0): FS size: 125071360 bytes (119 MiB, 985 LEBs), max 996 LEBs
+#
+# The UBI device has to be set up from here because the bootloader writes a
+# plain tclinux trx (kernel + squashfs) over the firmware partition and has no
+# way to write a UBI volume somewhere else. Provisioning therefore happens on
+# the first boot after a flash: ubiformat only erases the erase blocks that
+# hold something, which on the stock partition is 34 of 1024 and takes a couple
+# of seconds. Every later boot just attaches the UBI device, which is a header
+# scan of 1024 erase blocks and writes nothing:
+#
+#   ubi0: attaching mtd7
+#   ubi0: scanning is finished
+#   ubi0: attached mtd7 (name "yaffs", size 128 MiB)
+#
+# If any step of this fails, 81_gs2210_ram_etc still moves /etc to RAM, so the
+# board comes up with a working network and wireless; it only loses
+# configuration changes at the next reboot.
+
+# Print the name of the UBI device (ubi0, ubi1, ...) that the given MTD
+# partition is attached as, or nothing when it is not attached at all. The
+# volumes of a device are ubi0_0 and friends, so they are skipped here.
+gs2210_ubi_dev() {
+	local dev
+
+	for dev in /sys/class/ubi/ubi[0-9]*; do
+		case "$dev" in
+			*_*) continue ;;
+		esac
+		[ "$(cat "$dev/mtd_num" 2>/dev/null)" = "$1" ] && printf '%s\n' "${dev##*/}"
+	done
+}
+
+# Device nodes are created from kernel uevents by procd, which is not
+# necessarily running yet while preinit does its work. Create the ones this
+# hook and fstools need from sysfs, where the kernel publishes the major:minor
+# pair the node has to carry.
+gs2210_devnode() {
+	local sysfs="$1" node="$2" maj min
+
+	[ -e "$node" ] && return 0
+	[ -r "$sysfs/dev" ] || return 1
+	IFS=: read -r maj min < "$sysfs/dev" || return 1
+	# Kernel uevents and procd create these nodes 0600 as well.
+	mknod -m 0600 "$node" c "$maj" "$min" 2>/dev/null
+}
+
+# Does this MTD partition hold a UBI device? Every erase block of a formatted
+# UBI device starts with a header carrying the magic "UBI#", so looking at the
+# first few of them tells apart the two cases that ubiattach reports the same
+# way: a partition that was never formatted, and a UBI device the kernel
+# refuses to attach.
+gs2210_ubi_magic() {
+	local esize blk
+
+	esize=$(cat /sys/class/mtd/mtd$1/erasesize 2>/dev/null)
+	[ -n "$esize" ] || esize=131072
+
+	for blk in 0 1 2 3; do
+		if [ "$(dd if=/dev/mtd$1 bs="$esize" skip="$blk" count=1 2>/dev/null |
+			dd bs=4 count=1 2>/dev/null)" = "UBI#" ]; then
+			return 0
+		fi
+	done
+	return 1
+}
+
+# Can this UBI volume be mounted as a UBIFS? fstools calls every UBI volume
+# UBIFS without looking at its content, so the only reliable test is to mount
+# it. Mounting also creates the file system when the volume is still empty and
+# grows it to the size of the volume otherwise, which is the state it should be
+# left in.
+gs2210_ubifs_ok() {
+	mount -t ubifs "$1" /tmp/ubifs-test 2>/dev/null || return 1
+	umount /tmp/ubifs-test
+	return 0
+}
+
+gs2210_ubi_overlay() {
+	[ "$(cat /tmp/sysinfo/board_name 2>/dev/null)" = "cmhk,gs2210" ] || return 0
+
+	# UBIFS has to be in the kernel, and the ubi tools have to be there to
+	# provision the partition. fstools depends on ubi-utils when the target
+	# has NAND support, so they normally are, but do not crash without them.
+	if ! grep -q ubifs /proc/filesystems; then
+		echo "- gs2210: this kernel has no ubifs, /etc stays in RAM -"
+		return 0
+	fi
+	for tool in ubiattach ubiformat ubimkvol ubirmvol; do
+		if ! command -v "$tool" >/dev/null 2>&1; then
+			echo "- gs2210: $tool is missing, /etc stays in RAM -"
+			return 0
+		fi
+	done
+
+	local mtd ubi vol vname
+
+	# Look the partition up by label rather than by number, so this keeps
+	# working if the layout in the device tree ever changes.
+	mtd=$(sed -n 's/^mtd\([0-9]*\):.*"yaffs"$/\1/p' /proc/mtd)
+	[ -n "$mtd" ] || return 0
+
+	# ubiattach reaches the kernel through the UBI control device.
+	gs2210_devnode /sys/class/misc/ubi_ctrl /dev/ubi_ctrl
+
+	# Attaching is what distinguishes a normal boot from the first one after
+	# flashing. ubiattach refuses to attach an MTD device that is already
+	# attached (EEXIST), so ask sysfs where the partition ended up first and
+	# only call ubiattach for a partition that has no UBI device yet. In that
+	# case the attach succeeds whenever the partition already holds a UBI
+	# device, so only a partition without one is ever formatted.
+	ubi=$(gs2210_ubi_dev "$mtd")
+
+	if [ -z "$ubi" ] && ! ubiattach -m "$mtd" >/dev/null 2>&1; then
+		# Attaching fails on a partition that holds data the UBI driver
+		# does not recognise, which is what the stock firmware's yaffs
+		# partition looks like, and on a partition that was never
+		# provisioned at all. Both want formatting. A partition that
+		# does hold a UBI device and still will not attach is a broken
+		# one, and formatting it would throw away whatever configuration
+		# it still carries, so check the erase block headers before
+		# deciding.
+		if gs2210_ubi_magic "$mtd"; then
+			echo "- gs2210: mtd$mtd holds a UBI device that will not attach, /etc stays in RAM -"
+			return 0
+		fi
+
+		echo "- gs2210: formatting mtd$mtd into the overlay UBI device -"
+		if ! ubiformat /dev/mtd$mtd -y >/tmp/ubiformat.log 2>&1; then
+			echo "- gs2210: ubiformat failed, /etc stays in RAM -"
+			tail -n 1 /tmp/ubiformat.log
+			return 0
+		fi
+
+		ubiattach -m "$mtd" >/dev/null 2>&1
+	fi
+
+	[ -n "$ubi" ] || ubi=$(gs2210_ubi_dev "$mtd")
+	if [ -z "$ubi" ]; then
+		echo "- gs2210: cannot attach mtd$mtd, /etc stays in RAM -"
+		return 0
+	fi
+
+	gs2210_devnode /sys/class/ubi/$ubi /dev/$ubi
+
+	# Testing the volume below mounts it, which needs a writable directory to
+	# mount it on. /tmp is a tmpfs by the time preinit runs, but if it is not
+	# there, leave the volume alone: fstools can still deal with it, and it
+	# must not be thrown away only because this hook cannot look at it.
+	if ! mkdir -p /tmp/ubifs-test 2>/dev/null; then
+		echo "- gs2210: no writable /tmp to test the overlay in, leaving ${ubi} attached -"
+		return 0
+	fi
+
+	# The volume has to carry the name fstools looks for.
+	vol=
+	for vname in /sys/class/ubi/${ubi}_*/name; do
+		[ "$(cat "$vname" 2>/dev/null)" = "rootfs_data" ] || continue
+		vol=${vname%/name}
+		vol=${vol##*/}
+		break
+	done
+
+	# An empty volume is fine, and so is one that has never been used: the
+	# mount above is what creates the file system.
+	if [ -n "$vol" ]; then
+		if ! gs2210_devnode /sys/class/ubi/$vol /dev/$vol; then
+			echo "- gs2210: cannot create /dev/$vol, /etc stays in RAM -"
+			return 0
+		fi
+		if gs2210_ubifs_ok /dev/$vol; then
+			echo "- gs2210: overlay on $vol (rootfs_data) -"
+			return 0
+		fi
+	fi
+
+	# Either there is no volume yet, or the one that is there cannot be
+	# mounted, which is what a power cut during the previous provisioning
+	# looks like. Throw it away and let the kernel make a fresh file system
+	# on the next mount. Nothing was ever mounted here: 80_mount_root runs
+	# after this hook, so there is no data to lose but a broken overlay.
+	[ -n "$vol" ] && ubirmvol /dev/$ubi -N rootfs_data >/dev/null 2>&1
+
+	if ! ubimkvol /dev/$ubi -N rootfs_data -m >/dev/null 2>&1; then
+		echo "- gs2210: ubimkvol failed, /etc stays in RAM -"
+		return 0
+	fi
+
+	vol=${ubi}_0
+	gs2210_devnode /sys/class/ubi/$vol /dev/$vol
+
+	echo "- gs2210: overlay on $vol (rootfs_data) -"
+}
+
+boot_hook_add preinit_main gs2210_ubi_overlay

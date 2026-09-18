@@ -54,12 +54,13 @@ cp -f ../tclinux-trx.sh "$MK_PATH"
 
 # =====================================================================
 # 3b. Board support files that belong in the target base-files: the preinit
-#     hook that deals with the unmountable flash overlay, and the first-boot
-#     wireless defaults. Both are shipped from this repository so they are
-#     versioned next to the image that uses them.
+#     hooks that turn the unused "yaffs" partition into a UBI overlay and that
+#     keep /etc usable when there is none, plus the first-boot wireless
+#     defaults. All are shipped from this repository so they are versioned
+#     next to the image that uses them.
 # =====================================================================
 BF_PATH="target/linux/econet/base-files/"
-BOARD_FILES="lib/preinit/81_gs2210_ram_etc etc/config/wireless"
+BOARD_FILES="lib/preinit/79_gs2210_ubi_overlay lib/preinit/81_gs2210_ram_etc etc/config/wireless"
 for f in $BOARD_FILES; do
     mkdir -p "$BF_PATH$(dirname "$f")"
     cp -f "../base-files/$f" "$BF_PATH$f"
