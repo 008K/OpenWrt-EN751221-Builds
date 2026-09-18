@@ -1,0 +1,41 @@
+# ChinaMobile HK GS2210 (econet EN751221)
+#
+# This board boots with its root filesystem as a read-only squashfs: the overlay
+# partition (mtd4, "rootfs_data") cannot be mounted because jffs2 needs to read
+# the erase block clean markers from the OOB area and the econet SPI-NAND/BMT
+# driver rejects OOB reads:
+#
+#   jffs2: cannot read OOB for EB at 00700000, requested 8 bytes, read 0 bytes, error -77
+#   mount_root: failed to mount -t jffs2 /dev/mtdblock4 /tmp/overlay: I/O error
+#
+# With / read-only, the first boot sequence cannot finish: board_detect cannot
+# write /etc/board.json (mv: can't create '/etc/board.json': Read-only file
+# system) and config_generate cannot write /etc/config/network, /etc/config/system
+# or /etc/config/wireless. The visible result is a box with no LAN address, no
+# DHCP server and no wireless, because nothing ever configured them.
+#
+# Until a writable overlay exists, run with a RAM copy of /etc so the normal
+# first boot path completes. Configuration changes do not survive a reboot.
+#
+# 81_ sorts after 80_mount_root (which tries the flash overlay) and before
+# 82_config_generate (which needs a writable /etc).
+
+gs2210_ram_etc() {
+	[ "$(cat /tmp/sysinfo/board_name 2>/dev/null)" = "cmhk,gs2210" ] || return 0
+
+	# A writable /etc means mount_root found an overlay: nothing to do.
+	if touch /etc/.ram-etc-test 2>/dev/null; then
+		rm -f /etc/.ram-etc-test
+		return 0
+	fi
+
+	mkdir -p /tmp/etc.ro
+	cp -a /etc/. /tmp/etc.ro/ || return 0
+	mount -t tmpfs -o size=8m,mode=755 tmpfs /etc || return 0
+	cp -a /tmp/etc.ro/. /etc/
+	rm -rf /tmp/etc.ro
+
+	echo "- gs2210: no flash overlay, /etc is a RAM copy -"
+}
+
+boot_hook_add preinit_main gs2210_ram_etc

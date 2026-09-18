@@ -1,0 +1,44 @@
+# Wireless defaults for the ChinaMobile HK GS2210.
+#
+# Shipped with the image instead of relying on first boot detection, for two
+# reasons: the generated config starts out with every interface disabled, and
+# the board has no persistent storage, so a config created at runtime is lost as
+# soon as the box reboots.
+#
+# Both radios are MAC80211. The PCI paths below are read off the running board
+# (1fb83000.pcie is the MT7603 2.4G radio, 1fb81000.pcie the MT76x2E 5G radio).
+#
+# The 5G radio has no calibration data on this unit: the eeprom nvmem cell in
+# reservearea reads back 0xff, so mt76x2e reports "EEPROM data check failed:
+# ffff" and comes up at minimum tx power. 2.4G is calibrated and runs at full
+# power. Both radios are enabled here anyway.
+
+config wifi-device 'radio0'
+	option type 'mac80211'
+	option path '1fb83000.pcie/pci0001:00/0001:00:01.0/0001:01:00.0'
+	option band '2g'
+	option channel '1'
+	option htmode 'HT20'
+	option disabled '0'
+
+config wifi-iface 'default_radio0'
+	option device 'radio0'
+	option network 'lan'
+	option mode 'ap'
+	option ssid 'OpenWrt'
+	option encryption 'none'
+
+config wifi-device 'radio1'
+	option type 'mac80211'
+	option path '1fb81000.pcie/pci0000:00/0000:00:00.0/0000:01:00.0'
+	option band '5g'
+	option channel '36'
+	option htmode 'VHT80'
+	option disabled '0'
+
+config wifi-iface 'default_radio1'
+	option device 'radio1'
+	option network 'lan'
+	option mode 'ap'
+	option ssid 'OpenWrt'
+	option encryption 'none'

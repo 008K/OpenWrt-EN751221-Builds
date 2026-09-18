@@ -53,6 +53,19 @@ cp -f ../en751221.mk "$MK_PATH"
 cp -f ../tclinux-trx.sh "$MK_PATH"
 
 # =====================================================================
+# 3b. Board support files that belong in the target base-files: the preinit
+#     hook that deals with the unmountable flash overlay, and the first-boot
+#     wireless defaults. Both are shipped from this repository so they are
+#     versioned next to the image that uses them.
+# =====================================================================
+BF_PATH="target/linux/econet/base-files/"
+BOARD_FILES="lib/preinit/81_gs2210_ram_etc etc/config/wireless"
+for f in $BOARD_FILES; do
+    mkdir -p "$BF_PATH$(dirname "$f")"
+    cp -f "../base-files/$f" "$BF_PATH$f"
+done
+
+# =====================================================================
 # 4. 拉取依赖包并注入主编译使能开关配置
 # =====================================================================
 ./scripts/feeds update -a
@@ -98,6 +111,27 @@ CONFIG_PACKAGE_librt=y
 CONFIG_PACKAGE_libstdcpp=y
 CONFIG_PACKAGE_r8152-firmware=y
 CONFIG_PACKAGE_wpad-basic-mbedtls=y
+
+# LuCI. There is no package feed wired up on this board yet (and this
+# snapshot uses apk rather than opkg), so the web interface has to be baked
+# in; without it the only way into the box is the serial console. luci-base
+# pulls the module set it needs, the explicit lines below keep the pieces
+# that matter from being dropped silently by a later defconfig.
+CONFIG_PACKAGE_luci=y
+CONFIG_PACKAGE_luci-base=y
+CONFIG_PACKAGE_luci-mod-network=y
+CONFIG_PACKAGE_luci-mod-status=y
+CONFIG_PACKAGE_luci-mod-system=y
+CONFIG_PACKAGE_luci-theme-bootstrap=y
+CONFIG_PACKAGE_luci-app-firewall=y
+CONFIG_PACKAGE_uhttpd=y
+CONFIG_PACKAGE_uhttpd-mod-ubus=y
+CONFIG_PACKAGE_rpcd=y
+CONFIG_PACKAGE_rpcd-mod-file=y
+CONFIG_PACKAGE_rpcd-mod-iwinfo=y
+CONFIG_PACKAGE_rpcd-mod-luci=y
+CONFIG_PACKAGE_rpcd-mod-ucode=y
+CONFIG_PACKAGE_iwinfo=y
 CONFIG_TARGET_INITRAMFS_COMPRESSION_NONE=y
 CONFIG_TARGET_ROOTFS_INITRAMFS=y
 # Keep the version out of the image file names. The image, sha256sums and
@@ -115,6 +149,17 @@ CONFIG_EOF
 
 # 5. 校验并补全依赖配置项
 make defconfig
+
+# Fail early if the LuCI packages did not survive defconfig. An image without
+# them boots and looks healthy over the serial console but has no web UI at all.
+for sym in CONFIG_PACKAGE_luci-base CONFIG_PACKAGE_uhttpd \
+           CONFIG_PACKAGE_uhttpd-mod-ubus CONFIG_PACKAGE_rpcd \
+           CONFIG_PACKAGE_luci-theme-bootstrap; do
+    grep -q "^$sym=y" .config || {
+        echo "ERROR: $sym is not enabled in .config" >&2
+        exit 1
+    }
+done
 
 # Fail here rather than an hour into the build if the seed above did not take
 # effect: the releases job downloads the image by an unversioned name.
