@@ -14,7 +14,41 @@ OpenWRT for EN751221 devices including:
 Currently repositories are not setup so installing software doesn't
 work yet.
 
-### ChinaMobile HK GS2210
+### Front panel: LAN and WAN on the integrated switch
+
+The SoC contains an MT7530 compatible switch whose first five PHY ports go to
+the front panel: ports 0..3 are the four sockets labelled LAN and port 4 is the
+one labelled WAN. Port 6 is the CPU port, a TRGMII link back into the frame
+engine, and it is the only path a frame can take to reach Linux.
+
+The stock driver leaves the switch in its flat, bootloader configuration: it
+bridges all five sockets together and never programs the VLAN table, so every
+frame arrives on eth0 untagged and nothing tells the WAN socket apart from a
+LAN socket.
+
+`patches/100-gsw-lan-wan-vlan.patch` gives the econet-eth module a VLAN
+configuration instead. VLAN 1 holds ports 0..3 plus the CPU port, VLAN 2 holds
+port 4 plus the CPU port, and the CPU port is the only tagged member of either
+one. Two things follow. Traffic between LAN sockets is still switched inside
+the chip and never reaches the SoC, while the WAN socket is separated from the
+LAN sockets in hardware rather than by the kernel. And each socket now reaches
+Linux as a tagged frame, which `base-files/etc/board.d/02_network` turns into
+`eth0.1` (LAN, bridged into `br-lan`, DHCP server on 192.168.1.1) and `eth0.2`
+(WAN).
+
+The tag handling is built into the kernel (`CONFIG_VLAN_8021Q=y`), so no extra
+package is needed; netifd creates both VLAN devices itself when it brings up
+the interfaces.
+
+The driver fills in the VLAN table before it moves any port out of the flat
+matrix. If a table write fails, the driver logs `switch: cannot add the ...`
+and leaves the ports forwarding the way the bootloader left them; the switch
+then stays flat and plain `eth0` is the interface that carries LAN. After
+flashing, `dmesg | grep 'switch:'` shows which of the two happened: a
+`switch: VLAN 1 on ports 0x4f ...` line means the split is in place, and a
+`switch: keeping the flat configuration` line means it is not.
+
+### ChinaMobile HK GS2210 (old notes)
 
 Out of the box the GS2210 has no persistent storage. The JFFS2 overlay partition
 (mtd4, "rootfs_data") cannot be mounted, because jffs2 wants to read the erase

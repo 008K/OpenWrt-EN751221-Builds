@@ -55,16 +55,37 @@ cp -f ../tclinux-trx.sh "$MK_PATH"
 # =====================================================================
 # 3b. Board support files that belong in the target base-files: the preinit
 #     hooks that turn the unused "yaffs" partition into a UBI overlay and that
-#     keep /etc usable when there is none, plus the first-boot wireless
-#     defaults. All are shipped from this repository so they are versioned
-#     next to the image that uses them.
+#     keep /etc usable when there is none, the switch layout the board reports
+#     to netifd (02_network), plus the first-boot wireless defaults. All are
+#     shipped from this repository so they are versioned next to the image
+#     that uses them.
 # =====================================================================
 BF_PATH="target/linux/econet/base-files/"
-BOARD_FILES="lib/preinit/79_gs2210_ubi_overlay lib/preinit/81_gs2210_ram_etc etc/config/wireless"
+BOARD_FILES="lib/preinit/79_gs2210_ubi_overlay lib/preinit/81_gs2210_ram_etc etc/config/wireless etc/board.d/02_network"
 for f in $BOARD_FILES; do
     mkdir -p "$BF_PATH$(dirname "$f")"
     cp -f "../base-files/$f" "$BF_PATH$f"
 done
+
+# =====================================================================
+# 3c. Driver patches. econet-eth is an out-of-tree kernel module that OpenWrt
+#     fetches from a pinned upstream commit, so local changes to it travel as
+#     patches in this repository and are applied while the package is built.
+#
+#     100-gsw-lan-wan-vlan.patch splits the SoC's integrated switch into a LAN
+#     and a WAN VLAN, both of them tagged towards the CPU port. That is the only
+#     way OpenWrt can tell which front panel socket a frame arrived on, and it
+#     is what 02_network above relies on: LAN is eth0.1 and WAN is eth0.2. If
+#     the patch does not apply, the build stops here rather than producing an
+#     image whose LAN and WAN devices carry no traffic.
+# =====================================================================
+DRV_PATCH_PATH="package/kernel/econet-eth/patches/"
+mkdir -p "$DRV_PATCH_PATH"
+if ! ls ../patches/*.patch >/dev/null 2>&1; then
+    echo "ERROR: no driver patches found in ../patches" >&2
+    exit 1
+fi
+cp -f ../patches/*.patch "$DRV_PATCH_PATH"
 
 # =====================================================================
 # 4. 拉取依赖包并注入主编译使能开关配置
