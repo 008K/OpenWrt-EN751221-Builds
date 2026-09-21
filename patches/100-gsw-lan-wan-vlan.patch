@@ -1,8 +1,8 @@
 diff --git a/econet_eth.c b/econet_eth.c
-index bc6150d..04112db 100644
+index bc6150d..cb2ff7c 100644
 --- a/econet_eth.c
 +++ b/econet_eth.c
-@@ -88,6 +88,60 @@
+@@ -88,6 +88,70 @@
  #define SWITCH_MAC_HI			0x30e8
  #define SWITCH_MAC_LO			0x30e4
  
@@ -11,21 +11,30 @@ index bc6150d..04112db 100644
 + * gmac0 (eth0). Every frame that reaches the SoC crosses port 6, so the only
 + * way for Linux to tell a frame from the WAN socket apart from one that came
 + * in on a LAN socket is an 802.1Q tag that the switch adds when it forwards to
-+ * the CPU port. OpenWrt then terminates those tags with eth0.1 (LAN) and
-+ * eth0.2 (WAN).
++ * the CPU port. OpenWrt terminates that tag with a VLAN device, eth0.2.
++ *
++ * The front panel layout is the one the vendor firmware reports in
++ * /proc/tc3162/eth_portmap: wan_port_id is 0 and lan_port_map is 1, 2, 3.
++ * Port 4 is the footprint of an unpopulated socket (this board has three
++ * sockets labelled LAN) and is left out of both VLANs.
 + */
 +#define MT7530_NUM_PORTS		7
-+#define EN75_GSW_CPU_PORT		6
++#define MT7530_CPU_PORT			6
++
 +#define MT7530_VTCR			0x90
 +#define  VTCR_BUSY			BIT(31)
++#define  VTCR_INVALID			BIT(16)
 +#define  VTCR_FUNC(x)			(((x) & 0xf) << 12)
 +#define  VTCR_VID(x)			((x) & 0xfff)
++#define  MT7530_VTCR_RD_VID		0
 +#define  MT7530_VTCR_WR_VID		1
 +
 +#define MT7530_VAWD1			0x94
 +#define  IVL_MAC			BIT(30)
 +#define  VTAG_EN			BIT(28)
 +#define  PORT_MEM(x)			(((x) & 0xff) << 16)
++#define  PORT_MEM_SHFT			16
++#define  PORT_MEM_MASK			0xff
 +#define  FID(x)				(((x) & 0x7) << 1)
 +#define  FID_BRIDGED			1
 +#define  VLAN_VALID			BIT(0)
@@ -34,14 +43,15 @@ index bc6150d..04112db 100644
 +#define  ETAG_CTRL_P(p, x)		(((x) & 0x3) << ((p) << 1))
 +#define  MT7530_VLAN_EGRESS_UNTAG	0
 +#define  MT7530_VLAN_EGRESS_TAG		2
-+#define  MT7530_VLAN_EGRESS_STACK	3
 +
 +#define MT7530_PCR_P(x)			(0x2004 + ((x) * 0x100))
 +#define  PORT_VLAN(x)			((x) & 0x3)
 +#define  PCR_PORT_VLAN_MASK		PORT_VLAN(3)
-+#define  MT7530_PORT_SECURITY_MODE	PORT_VLAN(3)
++#define  MT7530_PORT_FALLBACK_MODE	PORT_VLAN(1)
 +
 +#define MT7530_PVC_P(x)			(0x2010 + ((x) * 0x100))
++#define  ACC_FRM_MASK			GENMASK(1, 0)
++#define  MT7530_VLAN_ACC_ALL		0
 +#define  PVC_EG_TAG(x)			(((x) & 0x7) << 8)
 +#define  PVC_EG_TAG_MASK		PVC_EG_TAG(7)
 +#define  VLAN_ATTR(x)			(((x) & 0x3) << 6)
@@ -53,17 +63,17 @@ index bc6150d..04112db 100644
 +#define  G0_PORT_VID(x)			(((x) & 0xfff) << 0)
 +#define  G0_PORT_VID_MASK		G0_PORT_VID(0xfff)
 +
-+/* Front panel layout of this board: the four sockets labelled LAN are the
-+ * first four PHY ports, the one labelled WAN is the fifth. */
-+#define EN75_GSW_LAN_PORTS		(BIT(0) | BIT(1) | BIT(2) | BIT(3))
-+#define EN75_GSW_WAN_PORT		BIT(4)
++/* The socket labelled WAN is switch port 0, the sockets labelled LAN are
++ * ports 1, 2 and 3. */
++#define EN75_GSW_WAN_PORT		BIT(0)
++#define EN75_GSW_LAN_PORTS		(BIT(1) | BIT(2) | BIT(3))
 +#define EN75_GSW_VLAN_LAN		1
 +#define EN75_GSW_VLAN_WAN		2
 +
  struct en75_eth_pvt {
  	struct en75_eth			pub;
  	const struct en75_soc_data	*soc;
-@@ -211,6 +265,152 @@ int en75_port_set_macaddr(struct en75_eth *eth, enum etx_fport portn, const u8 *
+@@ -211,6 +275,192 @@ int en75_port_set_macaddr(struct en75_eth *eth, enum etx_fport portn, const u8 *
  	return 0;
  }
  
@@ -136,78 +146,118 @@ index bc6150d..04112db 100644
 +	return en75_gsw_wait_vtcr(regs);
 +}
 +
++/* Read the member port mask of one VLAN table entry back out of the switch. */
++static int en75_gsw_get_vlan_members(struct en751221_regs __iomem *regs, u16 vid,
++				     u8 *members)
++{
++	u32 vawd1;
++	int ret;
++
++	ret = en75_gsw_wait_vtcr(regs);
++	if (ret)
++		return ret;
++
++	en75_gsw_write(regs, MT7530_VTCR,
++		       VTCR_BUSY | VTCR_FUNC(MT7530_VTCR_RD_VID) | VTCR_VID(vid));
++
++	ret = en75_gsw_wait_vtcr(regs);
++	if (ret)
++		return ret;
++
++	vawd1 = en75_gsw_read(regs, MT7530_VAWD1);
++	if (!(vawd1 & VLAN_VALID))
++		return -ENOENT;
++
++	*members = (vawd1 >> PORT_MEM_SHFT) & PORT_MEM_MASK;
++
++	return 0;
++}
++
 +/*
-+ * Split the front panel into a LAN VLAN and a WAN VLAN, both of them tagged
-+ * towards the CPU port. Ports keep switching in hardware inside their own
-+ * VLAN, so LAN to LAN traffic still never reaches the SoC, while the tags tell
-+ * OpenWrt which socket a frame came in on.
++ * Put the WAN socket in a VLAN of its own and leave the LAN sockets bridging to
++ * the CPU the way they are today: frames from a LAN socket still reach eth0
++ * untagged, while frames from the WAN socket arrive carrying a VLAN tag and are
++ * picked up by the eth0.2 VLAN device instead. The asymmetry is deliberate. If
++ * a write below turns out not to take on this part, or the switch ignores the
++ * VLAN table altogether, the LAN sockets keep working exactly as they do
++ * without this function and only the WAN is missing.
 + *
-+ * The VLAN table is filled in before any port is moved out of matrix mode: if
-+ * a table write fails the ports are still forwarding the way the bootloader
-+ * left them, and the board keeps working as a plain switch.
++ * Untagged frames arriving on a socket are classified by that port's PVID, so
++ * every socket gets the PVID of its VLAN. The CPU port gets the LAN VLAN as its
++ * PVID, which is what sends the untagged traffic OpenWrt puts out on eth0 to
++ * the LAN sockets. From here on membership comes from the VLAN table rather
++ * than the port matrix, but the ports are moved to fallback mode rather than
++ * security mode, so a VID that is missing from the table still forwards by the
++ * matrix, which the bootloader leaves as all ports.
 + */
 +static int en75_gsw_setup_vlans(struct en751221_regs __iomem *regs,
 +				struct device *dev)
 +{
 +	u8 lan = EN75_GSW_LAN_PORTS, wan = EN75_GSW_WAN_PORT;
-+	u8 cpu = BIT(EN75_GSW_CPU_PORT);
++	u8 cpu = BIT(MT7530_CPU_PORT);
++	u8 members;
 +	int p, ret;
 +
-+	ret = en75_gsw_set_vlan(regs, EN75_GSW_VLAN_LAN, lan | cpu, cpu);
++	ret = en75_gsw_set_vlan(regs, EN75_GSW_VLAN_LAN, lan | cpu,
++				MT7530_VLAN_EGRESS_UNTAG);
 +	if (ret) {
 +		dev_err(dev, "switch: cannot add the LAN VLAN: %d\n", ret);
 +		return ret;
 +	}
 +
++	/* The CPU port is the only tagged member of the WAN VLAN: the tag is
++	 * what tells the WAN socket apart from the LAN sockets. */
 +	ret = en75_gsw_set_vlan(regs, EN75_GSW_VLAN_WAN, wan | cpu, cpu);
 +	if (ret) {
 +		dev_err(dev, "switch: cannot add the WAN VLAN: %d\n", ret);
 +		return ret;
 +	}
 +
-+	for (p = 0; p < MT7530_NUM_PORTS; p++) {
++	for (p = 0; p <= MT7530_CPU_PORT; p++) {
 +		u16 pvid;
 +
 +		if (lan & BIT(p))
 +			pvid = EN75_GSW_VLAN_LAN;
 +		else if (wan & BIT(p))
 +			pvid = EN75_GSW_VLAN_WAN;
++		else if (p == MT7530_CPU_PORT)
++			pvid = EN75_GSW_VLAN_LAN;
 +		else
 +			continue;
 +
-+		/* Untagged frames from this socket belong to its VLAN, and the
-+		 * VLAN entry decides whether they leave a port tagged. */
++		/* VTAG_EN on the VLAN entries means the entries decide whether
++		 * a frame leaves a port tagged, not these port settings. */
 +		en75_gsw_rmw(regs, MT7530_PPBV1_P(p), G0_PORT_VID_MASK,
 +			     G0_PORT_VID(pvid));
 +		en75_gsw_rmw(regs, MT7530_PVC_P(p),
-+			     VLAN_ATTR_MASK | PVC_EG_TAG_MASK,
++			     ACC_FRM_MASK | VLAN_ATTR_MASK | PVC_EG_TAG_MASK,
++			     MT7530_VLAN_ACC_ALL |
 +			     VLAN_ATTR(MT7530_VLAN_USER) |
 +			     PVC_EG_TAG(MT7530_VLAN_EG_DISABLED));
 +
 +		/* Take membership from the VLAN table instead of the port
-+		 * matrix, which is what makes the two VLANs separate. */
++		 * matrix, which is what keeps the WAN out of the LAN. */
 +		en75_gsw_rmw(regs, MT7530_PCR_P(p), PCR_PORT_VLAN_MASK,
-+			     MT7530_PORT_SECURITY_MODE);
++			     MT7530_PORT_FALLBACK_MODE);
 +	}
 +
-+	/* The CPU port takes its membership from the VLAN table too. Its own
-+	 * egress tag rule is left alone on purpose: that rule only applies to
-+	 * frames the CPU sends, and those already come from a VLAN device
-+	 * (eth0.1 or eth0.2) with the tag the switch needs. */
-+	en75_gsw_rmw(regs, MT7530_PVC_P(EN75_GSW_CPU_PORT),
-+		     VLAN_ATTR_MASK, VLAN_ATTR(MT7530_VLAN_USER));
-+	en75_gsw_rmw(regs, MT7530_PCR_P(EN75_GSW_CPU_PORT), PCR_PORT_VLAN_MASK,
-+		     MT7530_PORT_SECURITY_MODE);
++	if (!en75_gsw_get_vlan_members(regs, EN75_GSW_VLAN_LAN, &members) &&
++	    members != (u8)(lan | cpu))
++		dev_warn(dev,
++			 "switch: VLAN %u reads back as 0x%02x, expected 0x%02x\n",
++			 EN75_GSW_VLAN_LAN, members, lan | cpu);
 +
 +	dev_info(dev,
-+		 "switch: VLAN %u on ports 0x%02x and VLAN %u on port 0x%02x, both tagged on CPU port %u\n",
-+		 EN75_GSW_VLAN_LAN, lan, EN75_GSW_VLAN_WAN, wan, EN75_GSW_CPU_PORT);
++		 "switch: VLAN %u on ports 0x%02x and VLAN %u on port 0x%02x, tagged on CPU port %u only; WAN is eth0.%u\n",
++		 EN75_GSW_VLAN_LAN, lan, EN75_GSW_VLAN_WAN, wan, MT7530_CPU_PORT,
++		 EN75_GSW_VLAN_WAN);
 +	dev_info(dev,
-+		 "switch: PCR(0)=0x%08x PCR(6)=0x%08x PPBV1(0)=0x%08x PPBV1(4)=0x%08x VTCR=0x%08x\n",
++		 "switch: PCR(0)=0x%08x PPBV1(0)=0x%08x PPBV1(1)=0x%08x PPBV1(%u)=0x%08x VTCR=0x%08x\n",
 +		 en75_gsw_read(regs, MT7530_PCR_P(0)),
-+		 en75_gsw_read(regs, MT7530_PCR_P(EN75_GSW_CPU_PORT)),
 +		 en75_gsw_read(regs, MT7530_PPBV1_P(0)),
-+		 en75_gsw_read(regs, MT7530_PPBV1_P(4)),
++		 en75_gsw_read(regs, MT7530_PPBV1_P(1)),
++		 MT7530_CPU_PORT,
++		 en75_gsw_read(regs, MT7530_PPBV1_P(MT7530_CPU_PORT)),
 +		 en75_gsw_read(regs, MT7530_VTCR));
 +
 +	return 0;
@@ -216,7 +266,7 @@ index bc6150d..04112db 100644
  static int en75_init_port(struct en75_eth_pvt *eth, struct device_node *np)
  {
  	const __be32 *id_ptr = of_get_property(np, "reg", NULL);
-@@ -388,11 +588,20 @@ static int en75_probe(struct platform_device *pdev)
+@@ -388,11 +638,20 @@ static int en75_probe(struct platform_device *pdev)
  
  	eth->debug = en75_debugfs_init(&debug_conf);
  
@@ -227,9 +277,9 @@ index bc6150d..04112db 100644
  	en75_wreg(EN75_PMCR_CONFIG, &regs->switch_regs[MT753X_PMCR_P(6) / 4]);
  	en75_wreg(EN75_MFC_CONFIG, &regs->switch_regs[MT753X_MFC / 4]);
  
-+	/* Then split the front panel into a LAN and a WAN VLAN. A failure here
-+	 * is not fatal: the ports are still forwarding the way the bootloader
-+	 * left them, which is a plain switch with all of them bridged. */
++	/* Then give the WAN socket a VLAN of its own. A failure here is not
++	 * fatal: the LAN sockets keep forwarding the way the bootloader left
++	 * them, which is a plain switch with all of them bridged. */
 +	err = en75_gsw_setup_vlans(regs, &pdev->dev);
 +	if (err)
 +		dev_warn(&pdev->dev,

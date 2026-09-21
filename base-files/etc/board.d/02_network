@@ -8,13 +8,14 @@ econet_setup_interfaces()
 
 	case "$board" in
 	cmhk,gs2210)
-		# The switch is split into a LAN VLAN and a WAN VLAN, and both of
-		# them are tagged on the CPU port, which is the only link the SoC
-		# has to the front panel. See the econet-eth driver: ports 0..3
-		# (the sockets labelled LAN) are VLAN 1, port 4 (the socket
-		# labelled WAN) is VLAN 2. netifd creates both VLAN devices from
-		# the names below.
-		ucidef_set_interface_lan "eth0.1"
+		# The driver splits the integrated switch into a LAN and a WAN
+		# VLAN, but only frames from the WAN socket are tagged on their
+		# way to the CPU port. LAN therefore stays on plain eth0 and the
+		# WAN socket shows up as the eth0.2 VLAN device. See patch
+		# 100-gsw-lan-wan-vlan.patch in the econet-eth package: the WAN
+		# socket is switch port 0, the LAN sockets are ports 1, 2 and 3,
+		# and port 4 is the footprint of an unpopulated socket.
+		ucidef_set_interface_lan "eth0"
 		ucidef_set_interface_wan "eth0.2"
 		;;
 	*)

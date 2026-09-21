@@ -73,11 +73,11 @@ done
 #     patches in this repository and are applied while the package is built.
 #
 #     100-gsw-lan-wan-vlan.patch splits the SoC's integrated switch into a LAN
-#     and a WAN VLAN, both of them tagged towards the CPU port. That is the only
-#     way OpenWrt can tell which front panel socket a frame arrived on, and it
-#     is what 02_network above relies on: LAN is eth0.1 and WAN is eth0.2. If
-#     the patch does not apply, the build stops here rather than producing an
-#     image whose LAN and WAN devices carry no traffic.
+#     and a WAN VLAN, with the CPU port a tagged member of the WAN VLAN only.
+#     That is what 02_network below relies on: the LAN sockets keep reaching
+#     Linux untagged (so LAN stays on eth0) while the WAN socket arrives as
+#     eth0.2. If the patch does not apply, the build stops here rather than
+#     producing an image whose WAN device carries no traffic.
 # =====================================================================
 DRV_PATCH_PATH="package/kernel/econet-eth/patches/"
 mkdir -p "$DRV_PATCH_PATH"
