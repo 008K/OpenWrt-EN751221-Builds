@@ -1,0 +1,175 @@
+From ec724ca81a295725e826706895ce329eb4f7f4e6 Mon Sep 17 00:00:00 2001
+From: port <port@local>
+Date: Thu, 24 Sep 2026 09:43:52 +0800
+Subject: [PATCH 1/6] net: dsa: mt7530: add mt753x_ctrl_phy_addr() helper
+
+The MDIO MT7530 has 5 integrated PHYs, the first of which has the
+additional registers used for such things as configuring the clock
+configuration for the switch. The switch is typically on MDIO address 31
+and the PHYs are 0, 1, 2, 3 and 4 with 0 being the special one.
+
+However there are a number of MMIO based implementations of MT7530 and
+on these, mdiodev is NULL though they often still have a control PHY for
+the purpose. Move MT753X_CTRL_PHY_ADDR to a function which handles the
+NULL condition somewhat more gracefully and allows a place for MMIO
+implementations to add special case handling to provide their control
+PHY address.
+---
+ drivers/net/dsa/mt7530.c | 54 +++++++++++++++++++++-------------------
+ drivers/net/dsa/mt7530.h |  2 --
+ 2 files changed, 29 insertions(+), 27 deletions(-)
+
+diff --git a/drivers/net/dsa/mt7530.c b/drivers/net/dsa/mt7530.c
+index 548b85b..fa3599c 100644
+--- a/drivers/net/dsa/mt7530.c
++++ b/drivers/net/dsa/mt7530.c
+@@ -43,6 +43,16 @@ static const struct mt7530_mib_desc mt7530_mib[] = {
+ 	MIB_DESC(1, MT7530_PORT_MIB_RX_ARL_DROP, "RxArlDrop"),
+ };
+ 
++static int
++mt753x_ctrl_phy_addr(struct mt7530_priv *priv)
++{
++	if (WARN_ON_ONCE(!priv->mdiodev))
++		return 0;
++
++	/* Default is 1st PHY */
++	return (priv->mdiodev->addr + 1) & (PHY_MAX_ADDR - 1);
++}
++
+ static void
+ mt7530_mutex_lock(struct mt7530_priv *priv)
+ {
+@@ -60,32 +70,30 @@ mt7530_mutex_unlock(struct mt7530_priv *priv)
+ static void
+ core_write(struct mt7530_priv *priv, u32 reg, u32 val)
+ {
++	int ctl_phy = mt753x_ctrl_phy_addr(priv);
+ 	struct mii_bus *bus = priv->bus;
+ 	int ret;
+ 
+ 	mt7530_mutex_lock(priv);
+ 
+ 	/* Write the desired MMD Devad */
+-	ret = bus->write(bus, MT753X_CTRL_PHY_ADDR(priv->mdiodev->addr),
+-			 MII_MMD_CTRL, MDIO_MMD_VEND2);
++	ret = bus->write(bus, ctl_phy, MII_MMD_CTRL, MDIO_MMD_VEND2);
+ 	if (ret < 0)
+ 		goto err;
+ 
+ 	/* Write the desired MMD register address */
+-	ret = bus->write(bus, MT753X_CTRL_PHY_ADDR(priv->mdiodev->addr),
+-			 MII_MMD_DATA, reg);
++	ret = bus->write(bus, ctl_phy, MII_MMD_DATA, reg);
+ 	if (ret < 0)
+ 		goto err;
+ 
+ 	/* Select the Function : DATA with no post increment */
+-	ret = bus->write(bus, MT753X_CTRL_PHY_ADDR(priv->mdiodev->addr),
++	ret = bus->write(bus, ctl_phy,
+ 			 MII_MMD_CTRL, MDIO_MMD_VEND2 | MII_MMD_CTRL_NOINCR);
+ 	if (ret < 0)
+ 		goto err;
+ 
+ 	/* Write the data into MMD's selected register */
+-	ret = bus->write(bus, MT753X_CTRL_PHY_ADDR(priv->mdiodev->addr),
+-			 MII_MMD_DATA, val);
++	ret = bus->write(bus, ctl_phy, MII_MMD_DATA, val);
+ err:
+ 	if (ret < 0)
+ 		dev_err(&bus->dev, "failed to write mmd register\n");
+@@ -96,6 +104,7 @@ err:
+ static void
+ core_rmw(struct mt7530_priv *priv, u32 reg, u32 mask, u32 set)
+ {
++	int ctl_phy = mt753x_ctrl_phy_addr(priv);
+ 	struct mii_bus *bus = priv->bus;
+ 	u32 val;
+ 	int ret;
+@@ -103,31 +112,27 @@ core_rmw(struct mt7530_priv *priv, u32 reg, u32 mask, u32 set)
+ 	mt7530_mutex_lock(priv);
+ 
+ 	/* Write the desired MMD Devad */
+-	ret = bus->write(bus, MT753X_CTRL_PHY_ADDR(priv->mdiodev->addr),
+-			 MII_MMD_CTRL, MDIO_MMD_VEND2);
++	ret = bus->write(bus, ctl_phy, MII_MMD_CTRL, MDIO_MMD_VEND2);
+ 	if (ret < 0)
+ 		goto err;
+ 
+ 	/* Write the desired MMD register address */
+-	ret = bus->write(bus, MT753X_CTRL_PHY_ADDR(priv->mdiodev->addr),
+-			 MII_MMD_DATA, reg);
++	ret = bus->write(bus, ctl_phy, MII_MMD_DATA, reg);
+ 	if (ret < 0)
+ 		goto err;
+ 
+ 	/* Select the Function : DATA with no post increment */
+-	ret = bus->write(bus, MT753X_CTRL_PHY_ADDR(priv->mdiodev->addr),
++	ret = bus->write(bus, ctl_phy,
+ 			 MII_MMD_CTRL, MDIO_MMD_VEND2 | MII_MMD_CTRL_NOINCR);
+ 	if (ret < 0)
+ 		goto err;
+ 
+ 	/* Read the content of the MMD's selected register */
+-	val = bus->read(bus, MT753X_CTRL_PHY_ADDR(priv->mdiodev->addr),
+-			MII_MMD_DATA);
++	val = bus->read(bus, ctl_phy, MII_MMD_DATA);
+ 	val &= ~mask;
+ 	val |= set;
+ 	/* Write the data into MMD's selected register */
+-	ret = bus->write(bus, MT753X_CTRL_PHY_ADDR(priv->mdiodev->addr),
+-			 MII_MMD_DATA, val);
++	ret = bus->write(bus, ctl_phy, MII_MMD_DATA, val);
+ err:
+ 	if (ret < 0)
+ 		dev_err(&bus->dev, "failed to write mmd register\n");
+@@ -2633,8 +2638,11 @@ mt7531_setup(struct dsa_switch *ds)
+ 	struct mt7530_priv *priv = ds->priv;
+ 	struct mt7530_dummy_poll p;
+ 	u32 val, id;
++	int ctl_phy;
+ 	int ret, i;
+ 
++	ctl_phy = mt753x_ctrl_phy_addr(priv);
++
+ 	/* Reset whole chip through gpio pin or memory-mapped registers for
+ 	 * different type of hardware
+ 	 */
+@@ -2699,19 +2707,15 @@ mt7531_setup(struct dsa_switch *ds)
+ 	 * phy_[read,write]_mmd_indirect is called, we provide our own
+ 	 * mt7531_ind_mmd_phy_[read,write] to complete this function.
+ 	 */
+-	val = mt7531_ind_c45_phy_read(priv,
+-				      MT753X_CTRL_PHY_ADDR(priv->mdiodev->addr),
+-				      MDIO_MMD_VEND2, CORE_PLL_GROUP4);
++	val = mt7531_ind_c45_phy_read(priv, ctl_phy, MDIO_MMD_VEND2,
++				      CORE_PLL_GROUP4);
+ 	val |= MT7531_RG_SYSPLL_DMY2 | MT7531_PHY_PLL_BYPASS_MODE;
+ 	val &= ~MT7531_PHY_PLL_OFF;
+-	mt7531_ind_c45_phy_write(priv,
+-				 MT753X_CTRL_PHY_ADDR(priv->mdiodev->addr),
+-				 MDIO_MMD_VEND2, CORE_PLL_GROUP4, val);
++	mt7531_ind_c45_phy_write(priv, ctl_phy, MDIO_MMD_VEND2,
++				 CORE_PLL_GROUP4, val);
+ 
+ 	/* Disable EEE advertisement on the switch PHYs. */
+-	for (i = MT753X_CTRL_PHY_ADDR(priv->mdiodev->addr);
+-	     i < MT753X_CTRL_PHY_ADDR(priv->mdiodev->addr) + MT7530_NUM_PHYS;
+-	     i++) {
++	for (i = ctl_phy; i < ctl_phy + MT7530_NUM_PHYS; i++) {
+ 		mt7531_ind_c45_phy_write(priv, i, MDIO_MMD_AN, MDIO_AN_EEE_ADV,
+ 					 0);
+ 	}
+diff --git a/drivers/net/dsa/mt7530.h b/drivers/net/dsa/mt7530.h
+index 7e47cd9..fdf60bf 100644
+--- a/drivers/net/dsa/mt7530.h
++++ b/drivers/net/dsa/mt7530.h
+@@ -731,8 +731,6 @@ enum mt7531_xtal_fsel {
+ #define  MT7531_PHY_PLL_OFF		BIT(5)
+ #define  MT7531_PHY_PLL_BYPASS_MODE	BIT(4)
+ 
+-#define MT753X_CTRL_PHY_ADDR(addr)	((addr + 1) & 0x1f)
+-
+ #define CORE_PLL_GROUP5			0x404
+ #define  RG_LCDDS_PCW_NCPO1(x)		((x) & 0xffff)
+ 

@@ -1,0 +1,75 @@
+From bc7988136b1e5d5ba12461e878165186515a03b9 Mon Sep 17 00:00:00 2001
+From: port <port@local>
+Date: Thu, 24 Sep 2026 09:40:52 +0800
+Subject: [PATCH 4/6] net: dsa: mt7530: use child bus for core register access
+ on MMIO switches
+
+---
+ drivers/net/dsa/mt7530.c | 15 +++++++++++++++
+ drivers/net/dsa/mt7530.h |  4 ++++
+ 2 files changed, 19 insertions(+)
+
+diff --git a/drivers/net/dsa/mt7530.c b/drivers/net/dsa/mt7530.c
+index a64c1b2..d60f385 100644
+--- a/drivers/net/dsa/mt7530.c
++++ b/drivers/net/dsa/mt7530.c
+@@ -74,6 +74,12 @@ core_write(struct mt7530_priv *priv, u32 reg, u32 val)
+ 	struct mii_bus *bus = priv->bus;
+ 	int ret;
+ 
++	if (!bus)
++		bus = priv->child_bus;
++
++	if (WARN_ON_ONCE(!bus))
++		return;
++
+ 	mt7530_mutex_lock(priv);
+ 
+ 	/* Write the desired MMD Devad */
+@@ -109,6 +115,12 @@ core_rmw(struct mt7530_priv *priv, u32 reg, u32 mask, u32 set)
+ 	u32 val;
+ 	int ret;
+ 
++	if (!bus)
++		bus = priv->child_bus;
++
++	if (WARN_ON_ONCE(!bus))
++		return;
++
+ 	mt7530_mutex_lock(priv);
+ 
+ 	/* Write the desired MMD Devad */
+@@ -2392,8 +2404,11 @@ mt7530_setup_mdio(struct mt7530_priv *priv)
+ 	if (priv->irq_domain && !mnp)
+ 		mt7530_setup_mdio_irq(priv);
+ 
++	priv->child_bus = bus;
++
+ 	ret = devm_of_mdiobus_register(dev, bus, mnp);
+ 	if (ret) {
++		priv->child_bus = NULL;
+ 		dev_err(dev, "failed to register MDIO bus: %d\n", ret);
+ 		if (priv->irq_domain && !mnp)
+ 			mt7530_free_mdio_irq(priv);
+diff --git a/drivers/net/dsa/mt7530.h b/drivers/net/dsa/mt7530.h
+index c92a42e..c193c93 100644
+--- a/drivers/net/dsa/mt7530.h
++++ b/drivers/net/dsa/mt7530.h
+@@ -858,6 +858,9 @@ struct mt753x_info {
+  * @dev:		The device pointer
+  * @ds:			The pointer to the dsa core structure
+  * @bus:		The bus used for the device and built-in PHY
++ * @child_bus:		The bus created by the device, on MDIO implementations
++ *			this is bus indirectly accesses `bus`, on MMIO
++ *			implementations this bus is part of the switch.
+  * @regmap:		The regmap instance representing all switch registers
+  * @rstc:		The pointer to reset control used by MCM
+  * @core_pwr:		The power supplied into the core
+@@ -883,6 +886,7 @@ struct mt7530_priv {
+ 	struct device		*dev;
+ 	struct dsa_switch	*ds;
+ 	struct mii_bus		*bus;
++	struct mii_bus		*child_bus;
+ 	struct regmap		*regmap;
+ 	struct reset_control	*rstc;
+ 	struct regulator	*core_pwr;
