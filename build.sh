@@ -78,6 +78,13 @@ done
 #     Linux untagged (so LAN stays on eth0) while the WAN socket arrives as
 #     eth0.2. If the patch does not apply, the build stops here rather than
 #     producing an image whose WAN device carries no traffic.
+#
+#     Only the module's own patches may live in patches/. Patches for the
+#     kernel tree itself (the DSA mt7530 series) belong in
+#     target/linux/econet/patches-6.18 and are parked in kernel-patches/, which
+#     the build does not read: the module's source tree has no drivers/net, so
+#     handing one of them to the package would fail the build deep into the
+#     compile. The check below keeps that from happening again.
 # =====================================================================
 DRV_PATCH_PATH="package/kernel/econet-eth/patches/"
 mkdir -p "$DRV_PATCH_PATH"
@@ -85,6 +92,13 @@ if ! ls ../patches/*.patch >/dev/null 2>&1; then
     echo "ERROR: no driver patches found in ../patches" >&2
     exit 1
 fi
+for p in ../patches/*.patch; do
+    if grep -qE '^(\+\+\+|---) [ab]/(drivers|Documentation|net|include|arch|scripts)/' "$p"; then
+        echo "ERROR: $p edits the kernel tree, so it cannot be applied to the" >&2
+        echo "       econet-eth module. Move it to kernel-patches/." >&2
+        exit 1
+    fi
+done
 cp -f ../patches/*.patch "$DRV_PATCH_PATH"
 
 # =====================================================================

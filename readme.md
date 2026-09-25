@@ -54,6 +54,22 @@ only; WAN is eth0.2` line means the split is in place, while
 `switch: VLAN 1 reads back as ...` or `switch: keeping the flat configuration`
 means it is not.
 
+### Patches for the module and for the kernel
+
+`patches/` holds patches for the econet-eth module and nothing else. `build.sh`
+copies every file in it into `package/kernel/econet-eth/patches/`, which is
+where the package applies them, so a patch that edits the kernel tree cannot
+live there: the module's source tree has no `drivers/net`, and the package build
+dies with "No such file or directory" well into the run.
+
+`kernel-patches/` holds the DSA mt7530 series (920-925: passthrough mode, ctrl
+PHY address helper, an MDIO switch downstream of an MMIO switch, and the
+EN751221 binding). Those edit `drivers/net/dsa/mt7530*` and the DSA bindings, so
+they belong in `target/linux/econet/patches-6.18`, and they only become useful
+once the module can hand the switch over to DSA. The build does not read that
+directory today; `build.sh` refuses to copy a kernel patch into the module
+package, so this cannot silently return.
+
 ### ChinaMobile HK GS2210 (old notes)
 
 Out of the box the GS2210 has no persistent storage. The JFFS2 overlay partition
