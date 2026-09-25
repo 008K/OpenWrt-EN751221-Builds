@@ -1,5 +1,5 @@
 diff --git a/econet_eth.c b/econet_eth.c
-index bc6150d..cb2ff7c 100644
+index bc6150d..c3d9695 100644
 --- a/econet_eth.c
 +++ b/econet_eth.c
 @@ -88,6 +88,70 @@
@@ -19,7 +19,7 @@ index bc6150d..cb2ff7c 100644
 + * sockets labelled LAN) and is left out of both VLANs.
 + */
 +#define MT7530_NUM_PORTS		7
-+#define MT7530_CPU_PORT			6
++#define EN75_GSW_CPU_PORT			6
 +
 +#define MT7530_VTCR			0x90
 +#define  VTCR_BUSY			BIT(31)
@@ -194,7 +194,7 @@ index bc6150d..cb2ff7c 100644
 +				struct device *dev)
 +{
 +	u8 lan = EN75_GSW_LAN_PORTS, wan = EN75_GSW_WAN_PORT;
-+	u8 cpu = BIT(MT7530_CPU_PORT);
++	u8 cpu = BIT(EN75_GSW_CPU_PORT);
 +	u8 members;
 +	int p, ret;
 +
@@ -213,14 +213,14 @@ index bc6150d..cb2ff7c 100644
 +		return ret;
 +	}
 +
-+	for (p = 0; p <= MT7530_CPU_PORT; p++) {
++	for (p = 0; p <= EN75_GSW_CPU_PORT; p++) {
 +		u16 pvid;
 +
 +		if (lan & BIT(p))
 +			pvid = EN75_GSW_VLAN_LAN;
 +		else if (wan & BIT(p))
 +			pvid = EN75_GSW_VLAN_WAN;
-+		else if (p == MT7530_CPU_PORT)
++		else if (p == EN75_GSW_CPU_PORT)
 +			pvid = EN75_GSW_VLAN_LAN;
 +		else
 +			continue;
@@ -249,15 +249,15 @@ index bc6150d..cb2ff7c 100644
 +
 +	dev_info(dev,
 +		 "switch: VLAN %u on ports 0x%02x and VLAN %u on port 0x%02x, tagged on CPU port %u only; WAN is eth0.%u\n",
-+		 EN75_GSW_VLAN_LAN, lan, EN75_GSW_VLAN_WAN, wan, MT7530_CPU_PORT,
++		 EN75_GSW_VLAN_LAN, lan, EN75_GSW_VLAN_WAN, wan, EN75_GSW_CPU_PORT,
 +		 EN75_GSW_VLAN_WAN);
 +	dev_info(dev,
 +		 "switch: PCR(0)=0x%08x PPBV1(0)=0x%08x PPBV1(1)=0x%08x PPBV1(%u)=0x%08x VTCR=0x%08x\n",
 +		 en75_gsw_read(regs, MT7530_PCR_P(0)),
 +		 en75_gsw_read(regs, MT7530_PPBV1_P(0)),
 +		 en75_gsw_read(regs, MT7530_PPBV1_P(1)),
-+		 MT7530_CPU_PORT,
-+		 en75_gsw_read(regs, MT7530_PPBV1_P(MT7530_CPU_PORT)),
++		 EN75_GSW_CPU_PORT,
++		 en75_gsw_read(regs, MT7530_PPBV1_P(EN75_GSW_CPU_PORT)),
 +		 en75_gsw_read(regs, MT7530_VTCR));
 +
 +	return 0;
